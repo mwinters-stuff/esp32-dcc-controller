@@ -1,0 +1,21 @@
+## IDF Component Manager Manifest File
+dependencies:
+  ## Required IDF version
+  idf:
+    version: '>=5.5.1'
+  espressif/esp_wifi_remote:
+    version: ">=0.10,<1.0"
+    rules:
+      - if: "target in [esp32p4, esp32h2]"
+  espressif/esp_hosted:
+    version: "~2"
+    rules:
+      - if: "target in [esp32p4, esp32h2]"
+  lvgl/lvgl: ~8.4.0
+  # lvgl/lvgl: ^9.4.0
+  LovyanGFX:
+        git: https://github.com/lovyan03/LovyanGFX.git
+        # Optional: Specify a tag or commit
+        version: "1.2.7"
+        # version: "develop"
+        # version: "commit_hash"
