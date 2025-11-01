@@ -60,41 +60,52 @@ namespace main
   // --- Touchpad Read Callback ---
   void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
   {
-    int16_t x, y;
-    bool touched = display::read_raw_touch(&x, &y);
+    lv_coord_t x = 0;
+    lv_coord_t y = 0;
+    bool touched = DisplayManager::gfx.getTouch(&x, &y);
 
-    if (touched)
-    {
-      display::applyTouchTransform(&x, &y);
+    // Adjust these to match your hardware / rotation
+    // Try FLIP_Y = true to fix upside-down touches
+    constexpr bool FLIP_X = false;
+    constexpr bool FLIP_Y = true;
+    constexpr bool SWAP_XY = false;
+
+    if (touched) {
+      lv_coord_t tx = x;
+      lv_coord_t ty = y;
+
+      if (SWAP_XY) std::swap(tx, ty);
+      if (FLIP_X) tx = static_cast<lv_coord_t>(DisplayManager::gfx.screenWidth - tx - 1);
+      if (FLIP_Y) ty = static_cast<lv_coord_t>(DisplayManager::gfx.screenHeight - ty - 1);
+
+      data->point.x = tx;
+      data->point.y = ty;
+      data->state = LV_INDEV_STATE_PR;
+
       if (displaySleeping)
       {
         display_set_sleep(false);
         displaySleeping = false;
-        touched = false;
+        data->state = LV_INDEV_STATE_REL;
+        lastActivityTime = millis();
       }
+    } else {
+      data->state = LV_INDEV_STATE_REL;
     }
-
-    data->point.x = x;
-    data->point.y = y;
-    data->state = touched ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
   }
-
+  
   // --- App setup ---
-  std::shared_ptr<display::FirstScreen> firstScreen;
+auto manualCalibration = display::ManualCalibration::instance();
+auto firstScreen = display::FirstScreen::instance();
+
 
   void setup()
   {
     ESP_LOGI(TAG, "ES32 DCC Controller");
 
-    if (display::loadCalibrationFromNVS())
-    {
-      ESP_LOGI("APP", "Touchscreen already calibrated");
-    }
-    else
-    {
-      // run calibration UI once
-      display::startManualCalibration(lv_scr_act());
-    }
+    display::calibrateState calibrated =  manualCalibration->loadCalibrationFromNVS();
+
+
 
     ESP_LOGI(TAG, "Init Display");
 
@@ -102,6 +113,11 @@ namespace main
     DisplayManager::gfx.setRotation(0);
     DisplayManager::gfx.fillScreen(TFT_BLACK);
     DisplayManager::gfx.setBrightness(255); // ensure display on at start
+
+    if (calibrated == display::calibrateState::calibrate){
+        manualCalibration->calibrate();
+        return;
+    }
 
     lv_init();
     auto buffer_size = DisplayManager::bufferSize();
@@ -124,8 +140,19 @@ namespace main
     lv_indev_t *indev = lv_indev_drv_register(&indev_drv);
     ESP_LOGI(TAG, "Touch indev registered: %p", indev);
 
-    firstScreen = std::make_shared<display::FirstScreen>();
-    firstScreen->show(NULL);
+    switch(calibrated){
+      case  display::calibrateState::calibrated:
+        firstScreen->show(nullptr);
+        break;
+      case display::calibrateState::notCalibrated:
+      case display::calibrateState::showScreen:
+        manualCalibration->show(nullptr);
+      break;
+      default:
+        ESP_LOGI(TAG, "Calibrated is not correct.");
+        manualCalibration->show(nullptr);
+      break;
+    }
 
     lastActivityTime = millis();
     ESP_LOGI(TAG, "Setup complete. UI should be visible.");

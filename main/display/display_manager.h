@@ -12,6 +12,5 @@ public:
     };
 
     static LGFX gfx;
-    static std::atomic<bool> calibrating;
     static void disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p);
 };

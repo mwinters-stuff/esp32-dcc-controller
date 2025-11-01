@@ -1,7 +1,8 @@
-#include "esp_log.h"
+#include <lvgl.h>
+#include <esp_log.h>
 #include <string>
 #include "first_screen.h"
-#include "calibrate_screen.h"
+#include "manual_calibration.h"
 
 namespace display{
 
@@ -18,9 +19,10 @@ void FirstScreen::show(lv_obj_t * parent){
      btn_connect = std::make_shared<ui::LvglButton>(
         scr,
         "Connect",
-        [](lv_event_t* e) {
+        [this](lv_event_t* e) {
+            // ESP_LOGI(TAG,"Connect button event %d!", lv_event_get_code(e));
             if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                LV_LOG_USER("Connect button clicked!");
+                ESP_LOGI(TAG,"Connect button clicked!");
             }
         },
         200, 48, LV_ALIGN_CENTER, 0, -60);
@@ -29,9 +31,10 @@ void FirstScreen::show(lv_obj_t * parent){
     btn_wifi_scan = std::make_shared<ui::LvglButton>(
         scr,
         "Scan WiFi",
-        [](lv_event_t* e) {
+        [this](lv_event_t* e) {
+            // ESP_LOGI(TAG,"Scan WiFi button event %d!", lv_event_get_code(e));
             if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                LV_LOG_USER("Scan WiFi button clicked!");
+                ESP_LOGI(TAG,"Scan WiFi button clicked!");
             }
         },
         200, 48, LV_ALIGN_CENTER, 0, 0);
@@ -41,10 +44,10 @@ void FirstScreen::show(lv_obj_t * parent){
         scr,
         "Calibrate",
         [this,scr](lv_event_t* e) {
+            // ESP_LOGI(TAG,"Calibrate button event %d!", lv_event_get_code(e));
             if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                LV_LOG_USER("Calibrate button clicked!");
-                auto calScreen = std::make_shared<display::CalibrateScreen>(shared_from_this());
-                calScreen->onExit = [this]() { this->show(); };
+                ESP_LOGI(TAG, "Calibrate button clicked!");
+                auto calScreen = display::ManualCalibration::instance();
                 calScreen->show(lv_scr_act());
             }
         },

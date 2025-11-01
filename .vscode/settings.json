@@ -94,5 +94,7 @@
     "cinttypes": "cpp",
     "typeinfo": "cpp",
     "variant": "cpp"
-  }
+  },
+  "files.autoSave": "afterDelay",
+  "idf.notificationMode": "Silent"
 }

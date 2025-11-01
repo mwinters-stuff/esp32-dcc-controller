@@ -1,12 +1,12 @@
 dependencies:
-  LovyanGFX:
-    component_hash: dfd18bad566cc59688f71f0628cb1015f0de9638df9f81e759f48ad6662dfce8
+  LovyanGFX_dev:
+    component_hash: 0de4f2fe296403116df4f27fcc0e27efa1d1cca7346d0258f6abfaee2d054864
     dependencies: []
     source:
       git: https://github.com/lovyan03/LovyanGFX.git
       path: .
       type: git
-    version: 5438181440c71cf30bbdc347b0b1597ae3ebf77d
+    version: 2e0dc974a9b6521bf155afb53a9a92a623a60803
   idf:
     source:
       type: idf
@@ -19,9 +19,9 @@ dependencies:
       type: service
     version: 8.4.0
 direct_dependencies:
-- LovyanGFX
+- LovyanGFX_dev
 - idf
 - lvgl/lvgl
-manifest_hash: e58dbeec4571c4ce06a8229ce32cbfb2c6d81153990c155104fd0544620042f1
+manifest_hash: 6365a94872cf8f510c22eeeb7cd79c657a5c8003bf5518d4b5ed9aa2a4fd51a2
 target: esp32s3
 version: 2.0.0

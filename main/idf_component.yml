@@ -13,9 +13,9 @@ dependencies:
       - if: "target in [esp32p4, esp32h2]"
   lvgl/lvgl: ~8.4.0
   # lvgl/lvgl: ^9.4.0
-  LovyanGFX:
-        git: https://github.com/lovyan03/LovyanGFX.git
-        # Optional: Specify a tag or commit
-        version: "1.2.7"
-        # version: "develop"
-        # version: "commit_hash"
+  LovyanGFX_dev:
+    git: https://github.com/lovyan03/LovyanGFX.git
+    # Optional: Specify a tag or commit
+    # version: "1.2.7"
+    version: develop
+    # version: "commit_hash"

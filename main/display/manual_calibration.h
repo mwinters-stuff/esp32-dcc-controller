@@ -1,12 +1,60 @@
 #pragma once
-#include "lvgl.h"
+#include <lvgl.h>
+#include "screen.h"
+#include "ui/LvglButton.h"
+#include "ui/LvglLabel.h"
+#include <memory>
 
 namespace display {
 
-bool loadCalibrationFromNVS();
-void startManualCalibration(lv_obj_t* parent);
-void applyTouchTransform(int16_t* x, int16_t* y);
-bool read_raw_touch(int16_t* x, int16_t* y);  // your hardware read
+    enum calibrateState{
+        notCalibrated,
+        calibrate,
+        showScreen,
+        calibrated
+    };
 
+class ManualCalibration : public Screen {
+public:
+    // Get the singleton instance. Optional parent only used on first creation.
+    static std::shared_ptr<ManualCalibration> instance() {
+        static std::shared_ptr<ManualCalibration> s;
+        if(!s) s.reset(new ManualCalibration());
+        return s;
+    }
+
+
+
+    virtual ~ManualCalibration() = default;
+
+    // existing public API
+    virtual void show(lv_obj_t* parent = nullptr) override;
+    calibrateState loadCalibrationFromNVS();
+    virtual void cleanUp() override;
+    void calibrate();
+
+    // non-copyable, non-movable
+   ManualCalibration(const ManualCalibration&) = delete;
+    ManualCalibration& operator=(const ManualCalibration&) = delete;
+
+    ManualCalibration& operator=(ManualCalibration&&) = delete;
+
+protected:
+    ManualCalibration() {}; // protected ctor
+
+private:
+    const char *TAG = "MANUAL_CALIBRATION";
+    std::shared_ptr<ui::LvglLabel> lbl_title;
+    std::shared_ptr<ui::LvglLabel> lbl_sub_title;
+    std::shared_ptr<ui::LvglButton> btn_start;
+
+    uint16_t parameters[8];
+
+    void rebootToCalibrate();
+    void save_to_nvs(calibrateState state);
+    calibrateState load_from_nvs();
+
+
+};
 
 } // namespace display
