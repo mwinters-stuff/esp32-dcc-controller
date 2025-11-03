@@ -1,65 +1,68 @@
-#include <lvgl.h>
-#include <esp_log.h>
-#include <string>
 #include "first_screen.h"
 #include "manual_calibration.h"
+#include "WifiListScreen.h"
+#include <esp_log.h>
 
-namespace display{
+namespace display {
 
-void FirstScreen::show(lv_obj_t * parent){
+void FirstScreen::show(lv_obj_t* parent) {
+    Screen::show(parent);  // Ensure base setup (sets lvObj_, applies theme, etc.)
 
-    lv_obj_t *scr = lv_scr_act();
-    lv_obj_clean(scr); /* clear existing children */
-
-    // extern lv_font_t lv_font_montserrat_24;
-    lbl_title = std::make_shared<ui::LvglLabel>(scr, "DCC Controller", LV_ALIGN_TOP_MID, 0, 10, &::lv_font_montserrat_30);
+    // Title Label
+    lbl_title = std::make_shared<ui::LvglLabel>(
+        lvObj_, "DCC Controller", LV_ALIGN_TOP_MID, 0, 10, &lv_font_montserrat_30);
+    lbl_title->setStyle("label.title");
     lbl_title->setColor(lv_palette_main(LV_PALETTE_BLUE));
 
-    /* Connect button */
-     btn_connect = std::make_shared<ui::LvglButton>(
-        scr,
-        "Connect",
+    // "Connect" button
+    btn_connect = std::make_shared<ui::LvglButton>(
+        lvObj_, "Connect",
         [this](lv_event_t* e) {
-            // ESP_LOGI(TAG,"Connect button event %d!", lv_event_get_code(e));
-            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                ESP_LOGI(TAG,"Connect button clicked!");
-            }
+            if (lv_event_get_code(e) == LV_EVENT_CLICKED)
+                ESP_LOGI(TAG, "Connect button clicked!");
         },
         200, 48, LV_ALIGN_CENTER, 0, -60);
+    btn_connect->setStyle("button.primary");
 
-    /* Scan WiFi button */
+    // "Scan WiFi" button
     btn_wifi_scan = std::make_shared<ui::LvglButton>(
-        scr,
-        "Scan WiFi",
+        lvObj_, "Scan WiFi",
         [this](lv_event_t* e) {
-            // ESP_LOGI(TAG,"Scan WiFi button event %d!", lv_event_get_code(e));
             if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                ESP_LOGI(TAG,"Scan WiFi button clicked!");
-            }
+                ESP_LOGI(TAG, "Scan WiFi button clicked!");
+                auto wifiScreen = WifiListScreen::instance();
+                wifiScreen->show();
+                wifiScreen->setWifiList({
+                    {"Network_1", -40},
+                    {"Network_2", -70},
+                    {"Network_3", -80},
+                    {"Network_4", -90},            }
         },
         200, 48, LV_ALIGN_CENTER, 0, 0);
+    btn_wifi_scan->setStyle("button.primary");
 
-    /* Calibrate button */
+    // "Calibrate" button
     btn_cal = std::make_shared<ui::LvglButton>(
-        scr,
-        "Calibrate",
-        [this,scr](lv_event_t* e) {
-            // ESP_LOGI(TAG,"Calibrate button event %d!", lv_event_get_code(e));
+        lvObj_, "Calibrate",
+        [this](lv_event_t* e) {
             if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
                 ESP_LOGI(TAG, "Calibrate button clicked!");
-                auto calScreen = display::ManualCalibration::instance();
-                calScreen->show(lv_scr_act());
+                auto calScreen = ManualCalibration::instance();
+                calScreen->show();
             }
         },
         200, 48, LV_ALIGN_CENTER, 0, 60);
+    btn_cal->setStyle("button.secondary");
 
-    ESP_LOGI(TAG, "Front Screen UI created");
+    ESP_LOGI(TAG, "FirstScreen UI created");
 }
 
-void FirstScreen::cleanUp(){
-    btn_cal.reset();
+void FirstScreen::cleanUp() {
+    lbl_title.reset();
     btn_connect.reset();
     btn_wifi_scan.reset();
+    btn_cal.reset();
+    Screen::cleanUp();
 }
 
-}
+}  // namespace display

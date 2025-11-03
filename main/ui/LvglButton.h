@@ -4,9 +4,11 @@
 #include <lvgl.h>
 #include <functional>
 #include <string>
+#include "LvglWidgetBase.h"
 
-namespace ui{
-class LvglButton {
+namespace ui {
+
+class LvglButton : public LvglWidgetBase {
 public:
     using EventCallback = std::function<void(lv_event_t*)>;
 
@@ -19,64 +21,58 @@ public:
                lv_coord_t x_ofs = 0,
                lv_coord_t y_ofs = 0,
                const lv_font_t* font = nullptr)
-        : callback_(std::move(cb))
+        : LvglWidgetBase(lv_btn_create(parent), "button"), callback_(std::move(cb))
     {
-        // Create button
-        btn_ = lv_btn_create(parent);
-        lv_obj_set_size(btn_, width, height);
-        lv_obj_align(btn_, align, x_ofs, y_ofs);
+        lv_obj_set_size(lvObj_, width, height);
+        lv_obj_align(lvObj_, align, x_ofs, y_ofs);
 
-        // Register event handler (trampoline)
-        lv_obj_add_event_cb(btn_, &LvglButton::event_trampoline, LV_EVENT_ALL, this);
+        lv_obj_add_event_cb(lvObj_, &LvglButton::event_trampoline, LV_EVENT_ALL, this);
 
-        // Create label
-        label_ = lv_label_create(btn_);
+        label_ = lv_label_create(lvObj_);
         lv_label_set_text(label_, text.c_str());
         lv_obj_center(label_);
 
-        if (font) {
+        if (font)
             lv_obj_set_style_text_font(label_, font, LV_PART_MAIN);
-        }else{
-          lv_obj_set_style_text_font(label_, LV_FONT_DEFAULT, LV_PART_MAIN);
-        }
 
+        // Base constructor auto-applies theme
     }
 
-    lv_obj_t* button() const { return btn_; }
-    lv_obj_t* label() const { return label_; }
+    void setText(const std::string& text) { lv_label_set_text(label_, text.c_str()); }
+    void setCallback(EventCallback cb) { callback_ = std::move(cb); }
 
-    void setText(const std::string& text) {
-        lv_label_set_text(label_, text.c_str());
-    }
+    void applyTheme() override {
+    auto theme = LvglTheme::active();
+    if (!theme) return;
 
-    void setEnabled(bool enabled) {
-        if (enabled)
-            lv_obj_clear_state(btn_, LV_STATE_DISABLED);
-        else
-            lv_obj_add_state(btn_, LV_STATE_DISABLED);
-    }
+    const LvglStyle* main     = theme->get("button.main");
+    const LvglStyle* pressed  = theme->get("button.pressed");
+    const LvglStyle* disabled = theme->get("button.disabled");
 
-    void setCallback(EventCallback cb) {
-        callback_ = std::move(cb);
-    }
+    // Clear existing styles (LVGL 8)
+    lv_obj_remove_style_all(lvObj_);
 
-    void setFont(const lv_font_t* font) {
-        lv_obj_set_style_text_font(label_, font, LV_PART_MAIN);
-    }
+    // Apply base style
+    if (main) main->applyTo(lvObj_, LV_PART_MAIN);
 
+    // // Apply pressed variant (as state overlay)
+    if (pressed) pressed->applyTo(lvObj_, LV_PART_MAIN , LV_STATE_PRESSED);
+
+    // // Apply disabled variant
+    if (disabled) disabled->applyTo(lvObj_, LV_PART_MAIN , LV_STATE_DISABLED);
+}
 
 private:
     static void event_trampoline(lv_event_t* e) {
         auto* self = static_cast<LvglButton*>(lv_event_get_user_data(e));
-        if (self && self->callback_) {
+        if (self && self->callback_)
             self->callback_(e);
-        }
     }
 
-    lv_obj_t* btn_ = nullptr;
     lv_obj_t* label_ = nullptr;
     EventCallback callback_;
 };
 
-};
+} // namespace ui
+
 #endif

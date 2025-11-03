@@ -2,6 +2,7 @@
 #include <esp_log.h>
 #include <nvs_flash.h>
 #include <nvs.h>
+#include <nvs_handle.hpp>
 #include <esp_system.h>
 #include "display_manager.h"
 #include "manual_calibration.h"
@@ -12,7 +13,7 @@ namespace display {
 
 #define NVS_NAMESPACE "touch_cal"
 #define NVS_CALIBRATION_SAVED "cal_saved"
-#define NVS_CALIBRATION "calibration"
+#define NVS_CALIBRATION "calib"
 
 void  ManualCalibration::show(lv_obj_t* parent){
     lv_obj_t* scr = lv_scr_act();
@@ -48,23 +49,25 @@ void ManualCalibration::cleanUp(){
 }
 
 void ManualCalibration::rebootToCalibrate(){
-    nvs_handle_t nvs;
-    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs);
+    esp_err_t err;
+    std::unique_ptr<nvs::NVSHandle> handle = nvs::open_nvs_handle(NVS_NAMESPACE, NVS_READWRITE, &err);
+
     if (err != ESP_OK) {
-        showError(err);
         ESP_LOGE(TAG, "nvs_open failed: %s", esp_err_to_name(err));
         return;
     }
 
-    err = nvs_set_i8(nvs,NVS_CALIBRATION_SAVED, calibrateState::calibrate);
+    err = handle->set_item(NVS_CALIBRATION_SAVED, calibrateState::calibrate);
     if (err != ESP_OK) {
-        showError(err);
-        ESP_LOGW(TAG, "rebootToCalibrate calibration_saved");
+        ESP_LOGW(TAG, "rebootToCalibrate calibration_saved: %s", esp_err_to_name(err));
         return;
     }
 
-    nvs_commit(nvs);
-    nvs_close(nvs);
+    err = handle->commit();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "nvs_commit failed: %s", esp_err_to_name(err));
+        return;
+    }
 
     ESP_LOGI(TAG, "Saved calibration to NVS Rebooting");
     sleep(1);
@@ -95,66 +98,58 @@ calibrateState ManualCalibration::loadCalibrationFromNVS()
     return cal;
 }
 
-void ManualCalibration::save_to_nvs(calibrateState state)
-{
-    nvs_handle_t nvs;
-    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs);
+void ManualCalibration::save_to_nvs(calibrateState state){
+    esp_err_t err;
+    std::unique_ptr<nvs::NVSHandle> handle = nvs::open_nvs_handle(NVS_NAMESPACE, NVS_READWRITE, &err);
     if (err != ESP_OK) {
-        showError(err);
         ESP_LOGE(TAG, "nvs_open failed: %s", esp_err_to_name(err));
         return;
     }
 
-    err = nvs_set_blob(nvs, NVS_CALIBRATION, parameters, sizeof(parameters));
+    err = handle->set_blob(NVS_CALIBRATION, parameters, sizeof(parameters));
     if (err != ESP_OK) {
-        showError(err);
-        ESP_LOGW(TAG, "Saving calibration failed");
+        ESP_LOGW(TAG, "Saving calibration failed: %s", esp_err_to_name(err));
     }    
-    err = nvs_set_i8(nvs,NVS_CALIBRATION_SAVED, state);
+    err = handle->set_item(NVS_CALIBRATION_SAVED, state);
     if (err != ESP_OK) {
-        showError(err);
-        ESP_LOGW(TAG, "Saving calibration_saved failed");
+        ESP_LOGW(TAG, "Saving calibration_saved failed: %s", esp_err_to_name(err));
     }    
-    nvs_commit(nvs);
-    nvs_close(nvs);
+    err = handle->commit();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "nvs_commit failed: %s", esp_err_to_name(err));
+        return;
+    }
+
 
     ESP_LOGI(TAG, "Saved calibration to NVS");
 }
 
-calibrateState ManualCalibration::load_from_nvs()
-{
-    nvs_handle_t nvs;
-    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs);
+calibrateState ManualCalibration::load_from_nvs(){
+    esp_err_t err;
+    std::unique_ptr<nvs::NVSHandle> handle = nvs::open_nvs_handle(NVS_NAMESPACE, NVS_READONLY, &err);
     if (err != ESP_OK) {
-        showError(err);
-        ESP_LOGW(TAG, "No existing calibration data");
+        ESP_LOGW(TAG, "No existing calibration data: %s", esp_err_to_name(err));
         return calibrateState::showScreen;
     }
-    
+   
 
-    int8_t saved;
-    err = nvs_get_i8(nvs, NVS_CALIBRATION_SAVED, &saved);
+    calibrateState saved;
+    err = handle->get_item(NVS_CALIBRATION_SAVED, saved);
     if (err != ESP_OK) {
-        showError(err);
-        ESP_LOGW(TAG, "Loading calibration_saved failed");
+        ESP_LOGW(TAG, "Loading calibration_saved failed: %s", esp_err_to_name(err));
         saved = calibrateState::notCalibrated;
     }
     if(saved != calibrateState::calibrated){
-        nvs_close(nvs);
         return (calibrateState)saved;
     }
 
-    size_t length;
-    err = nvs_get_blob(nvs, NVS_CALIBRATION, parameters, &length);
+    err = handle->get_blob(NVS_CALIBRATION, parameters, sizeof(parameters));
 
-    if(err != ESP_OK || length != sizeof(parameters)){
-        showError(err);
-        ESP_LOGW(TAG, "Loading calibration failed");
-        nvs_close(nvs);
+    if(err != ESP_OK){
+        ESP_LOGW(TAG, "Loading calibration failed: %s", esp_err_to_name(err));
         return calibrateState::showScreen;
     }
     
-    nvs_close(nvs);
     return calibrateState::calibrated;
     
 }

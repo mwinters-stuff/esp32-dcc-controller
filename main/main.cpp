@@ -1,6 +1,7 @@
 #include "display/display_manager.h"
 #include "display/first_screen.h"
 #include "display/manual_calibration.h"
+#include "ui/LvglTheme.h"
 #include "millis.h"
 #include <LGFX_ILI9488_S3.hpp>
 #include <LovyanGFX.hpp>
@@ -140,6 +141,9 @@ auto firstScreen = display::FirstScreen::instance();
     lv_indev_t *indev = lv_indev_drv_register(&indev_drv);
     ESP_LOGI(TAG, "Touch indev registered: %p", indev);
 
+    auto theme = std::make_shared<ui::LvglTheme>("Default");
+    ui::LvglTheme::setActive(theme);
+
     switch(calibrated){
       case  display::calibrateState::calibrated:
         firstScreen->show(nullptr);
@@ -162,13 +166,15 @@ auto firstScreen = display::FirstScreen::instance();
 
 extern "C" void app_main()
 {
-  esp_err_t ret = nvs_flash_init();
-  if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
-  {
-    ESP_ERROR_CHECK(nvs_flash_erase());
-    ret = nvs_flash_init();
-  }
-  ESP_ERROR_CHECK(ret);
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        // NVS partition was truncated and needs to be erased
+        // Retry nvs_flash_init
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK( err );
+
 
   main::setup();
 

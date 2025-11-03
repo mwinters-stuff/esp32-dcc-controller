@@ -3,9 +3,11 @@
 
 #include <lvgl.h>
 #include <string>
+#include "LvglWidgetBase.h"
 
-namespace ui{
-class LvglLabel {
+namespace ui {
+
+class LvglLabel : public LvglWidgetBase {
 public:
     LvglLabel(lv_obj_t* parent,
               const std::string& text,
@@ -13,39 +15,33 @@ public:
               lv_coord_t x_ofs = 0,
               lv_coord_t y_ofs = 0,
               const lv_font_t* font = nullptr)
+        : LvglWidgetBase(lv_label_create(parent), "label")
     {
-        label_ = lv_label_create(parent);
-        lv_label_set_text(label_, text.c_str());
-        lv_obj_align(label_, align, x_ofs, y_ofs);
+        lv_label_set_text(lvObj_, text.c_str());
+        lv_obj_align(lvObj_, align, x_ofs, y_ofs);
 
-        if (font) {
-            lv_obj_set_style_text_font(label_, font, LV_PART_MAIN);
-        }else{
-          lv_obj_set_style_text_font(label_, LV_FONT_DEFAULT, LV_PART_MAIN);
-        }
+        if (font)
+            lv_obj_set_style_text_font(lvObj_, font, LV_PART_MAIN);
+
+        // Base constructor auto-applies theme
     }
-
-    lv_obj_t* getLvObj() const { return label_; }
 
     void setText(const std::string& text) {
-        lv_label_set_text(label_, text.c_str());
+        lv_label_set_text(lvObj_, text.c_str());
     }
 
-    void setAlignment(lv_align_t align, lv_coord_t x_ofs = 0, lv_coord_t y_ofs = 0) {
-        lv_obj_align(label_, align, x_ofs, y_ofs);
-    }
+    void applyTheme() override {
+    auto theme = LvglTheme::active();
+    if (!theme) return;
 
-    void setFont(const lv_font_t* font) {
-        lv_obj_set_style_text_font(label_, font, LV_PART_MAIN);
-    }
+    const LvglStyle* main = theme->get("label.main");
 
-    void setColor(lv_color_t color) {
-        lv_obj_set_style_text_color(label_, color, LV_PART_MAIN);
-    }
+    lv_obj_remove_style_all(lvObj_);
 
-private:
-    lv_obj_t* label_ = nullptr;
+    if (main) main->applyTo(lvObj_, LV_PART_MAIN);
+}
 };
-};
+
+} // namespace ui
 
 #endif
