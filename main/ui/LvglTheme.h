@@ -48,19 +48,16 @@ public:
         buildDefaultStyles();
     }
 
-    // optional convenience constructor with defaults
     explicit LvglTheme(std::string name)
         : name_(std::move(name)) {
         buildDefaultStyles();
     }
 
-    // Accessors
     const std::string& name() const { return name_; }
     const Palette& colors()  const { return palette_; }
     const Metrics& metrics() const { return metrics_; }
     const Fonts& fonts()     const { return fonts_; }
 
-    // Define or get a style (creates if missing)
     LvglStyle& defineStyle(const std::string& key) {
         auto it = styles_.find(key);
         if (it == styles_.end()) {
@@ -72,18 +69,10 @@ public:
         return *it->second;
     }
 
-    //Get pointer or reference
     const LvglStyle* get(const std::string& key) const {
         auto it = styles_.find(key);
         return (it != styles_.end()) ? it->second.get() : nullptr;
     }
-
-//     std::shared_ptr<LvglStyle> get(const std::string& name) {
-//     auto it = styles_.find(name);
-//     if (it != styles_.end())
-//         return it->secondt;
-//     return nullptr;
-// }
 
     const LvglStyle& style(const std::string& key) const {
         if (auto p = get(key)) return *p;
@@ -96,14 +85,12 @@ public:
         return empty;
     }
 
-    // Global theme
     static void setActive(std::shared_ptr<LvglTheme> theme) { active_ = std::move(theme); }
     static std::shared_ptr<LvglTheme> active() { return active_; }
 
 private:
-    // Register default per-widget styles
     void buildDefaultStyles() {
-        // ---- BUTTON ----
+        // BUTTONS
         defineStyle("button.main")
             .bgColor(palette_.primary)
             .textColor(lv_color_white())
@@ -118,12 +105,12 @@ private:
             .bgColor(palette_.surface)
             .textColor(lv_palette_lighten(LV_PALETTE_GREY, 2));
 
-        // ---- LABEL ----
+        // LABELS
         defineStyle("label.main")
             .textColor(palette_.text)
             .textFont(fonts_.medium);
 
-        // ---- CHECKBOX ----
+        // CHECKBOX
         defineStyle("checkbox.main")
             .textColor(palette_.text)
             .padAll(metrics_.padding / 2);
@@ -134,7 +121,7 @@ private:
         defineStyle("checkbox.disabled")
             .textColor(lv_palette_lighten(LV_PALETTE_GREY, 2));
 
-        // ---- DROPDOWN ----
+        // DROPDOWN
         defineStyle("dropdown.main")
             .bgColor(palette_.surface)
             .textColor(palette_.text)
@@ -145,27 +132,23 @@ private:
             .bgColor(palette_.primary)
             .textColor(lv_color_white());
 
+        // SCREEN
         defineStyle("screen.main")
             .bgColor(palette_.background)
             .textColor(palette_.text);
 
-
-        defineStyle("label.main")
-            .textColor(palette_.text);
-
-
+        // LIST
         defineStyle("list.main")
             .bgColor(palette_.surface)
             .borderWidth(0);
 
-
+        // WIFI ITEM
         defineStyle("wifi.item")
             .bgColor(lv_color_hex(0xF0F0F0))
             .borderColor(lv_color_hex(0xD0D0D0))
             .borderWidth(1)
             .padAll(6);
-
-            }
+    }
 
     std::string name_;
     Palette palette_;

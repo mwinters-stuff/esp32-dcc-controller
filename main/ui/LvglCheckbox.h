@@ -20,17 +20,19 @@ public:
                  lv_align_t align = LV_ALIGN_CENTER,
                  lv_coord_t x_ofs = 0,
                  lv_coord_t y_ofs = 0)
-        : LvglWidgetBase(parent), callback_(std::move(cb))
+        : LvglWidgetBase(lv_checkbox_create(parent), "checkbox"),
+          callback_(std::move(cb))
     {
-        lvObj_ = lv_checkbox_create(parent);
-        lv_obj_align(lvObj_, align, x_ofs, y_ofs);
+        // ✅ Alignment API changed in LVGL 9
+        lv_obj_set_align(lvObj_, align);
+        if (x_ofs || y_ofs) lv_obj_set_pos(lvObj_, x_ofs, y_ofs);
 
         if (!text.empty())
             lv_checkbox_set_text(lvObj_, text.c_str());
 
         lv_obj_add_event_cb(lvObj_, &LvglCheckbox::event_trampoline, LV_EVENT_ALL, this);
 
-        applyTheme(); // apply immediately
+        applyTheme(); // Apply immediately so theme is visible
     }
 
     // --- Checkbox state helpers ---
@@ -54,7 +56,8 @@ public:
     }
 
     std::string text() const {
-        return lv_checkbox_get_text(lvObj_) ? lv_checkbox_get_text(lvObj_) : "";
+        const char* t = lv_checkbox_get_text(lvObj_);
+        return t ? std::string(t) : std::string();
     }
 
     void setCallback(EventCallback cb) {
@@ -62,27 +65,30 @@ public:
     }
 
     // --- Theming ---
-void applyTheme() override {
-    auto theme = LvglTheme::active();
-    if (!theme) return;
+    void applyTheme() override {
+        auto theme = LvglTheme::active();
+        if (!theme) return;
 
-    const LvglStyle* main     = theme->get("checkbox.main");
-    const LvglStyle* checked  = theme->get("checkbox.checked");
-    const LvglStyle* disabled = theme->get("checkbox.disabled");
+        const LvglStyle* main     = theme->get("checkbox.main");
+        const LvglStyle* indicator= theme->get("checkbox.indicator");
+        const LvglStyle* checked  = theme->get("checkbox.checked");
+        const LvglStyle* disabled = theme->get("checkbox.disabled");
 
-    lv_obj_remove_style_all(lvObj_);
+        // Clear styles (same in LVGL 9)
+        lv_obj_remove_style_all(lvObj_);
 
-    // Base style for the whole checkbox
-    if (main) main->applyTo(lvObj_, LV_PART_MAIN);
+        // Apply base box/text style
+        if (main) main->applyTo(lvObj_, LV_PART_MAIN);
 
-    // Checked indicator box
-    if (checked) checked->applyTo(lvObj_, LV_PART_INDICATOR | LV_STATE_CHECKED);
+        // Indicator base (unchecked box)
+        if (indicator) indicator->applyTo(lvObj_, LV_PART_INDICATOR);
 
-    // Disabled
-    if (disabled) disabled->applyTo(lvObj_, LV_PART_MAIN | LV_STATE_DISABLED);
-}
+        // Checked indicator overlay
+        if (checked) checked->applyTo(lvObj_, LV_PART_INDICATOR, LV_STATE_CHECKED);
 
-
+        // Disabled overlay
+        if (disabled) disabled->applyTo(lvObj_, LV_PART_MAIN, LV_STATE_DISABLED);
+    }
 
 private:
     static void event_trampoline(lv_event_t* e) {

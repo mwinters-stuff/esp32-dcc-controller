@@ -58,6 +58,7 @@ namespace display
                     ESP_LOGI(TAG, "Calibrate button clicked!");
                     auto calScreen = ManualCalibration::instance();
                     calScreen->show();
+                    calScreen->addBackButton(instance());
                 }
             },
             200, 48, LV_ALIGN_CENTER, 0, 60);

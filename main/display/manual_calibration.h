@@ -33,8 +33,11 @@ public:
     virtual void cleanUp() override;
     void calibrate();
 
+    void addBackButton(std::weak_ptr<Screen> previousScreen);
+
+
     // non-copyable, non-movable
-   ManualCalibration(const ManualCalibration&) = delete;
+    ManualCalibration(const ManualCalibration&) = delete;
     ManualCalibration& operator=(const ManualCalibration&) = delete;
 
     ManualCalibration& operator=(ManualCalibration&&) = delete;
@@ -44,9 +47,12 @@ protected:
 
 private:
     const char *TAG = "MANUAL_CALIBRATION";
+    std::weak_ptr<Screen> previousScreen_;
+    
     std::shared_ptr<ui::LvglLabel> lbl_title;
     std::shared_ptr<ui::LvglLabel> lbl_sub_title;
     std::shared_ptr<ui::LvglButton> btn_start;
+    std::shared_ptr<ui::LvglButton> btn_cancel; 
 
     uint16_t parameters[8];
 

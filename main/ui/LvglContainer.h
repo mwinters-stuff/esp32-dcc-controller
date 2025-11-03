@@ -24,7 +24,10 @@ public:
         : layout_type_(layout)
     {
         obj_ = lv_obj_create(parent);
-        setAlignment(align, x_ofs, y_ofs);
+
+        // ✅ Alignment API change in LVGL 9
+        lv_obj_set_align(obj_, align);
+        if (x_ofs || y_ofs) lv_obj_set_pos(obj_, x_ofs, y_ofs);
 
         if (layout == LayoutType::FLEX) {
             setFlexFlow(flow);
@@ -79,14 +82,14 @@ public:
     //
     void setGridLayout(const std::vector<lv_coord_t>& col_dsc,
                        const std::vector<lv_coord_t>& row_dsc) {
-        if (layout_type_ != LayoutType::GRID)
-            layout_type_ = LayoutType::GRID;
+        layout_type_ = LayoutType::GRID;
 
         grid_cols_ = col_dsc;
         grid_rows_ = row_dsc;
         grid_cols_.push_back(LV_GRID_TEMPLATE_LAST);
         grid_rows_.push_back(LV_GRID_TEMPLATE_LAST);
 
+        // ✅ API is unchanged in LVGL 9
         lv_obj_set_grid_dsc_array(obj_, grid_cols_.data(), grid_rows_.data());
     }
 
@@ -94,7 +97,7 @@ public:
                             uint8_t col, uint8_t col_span,
                             uint8_t row, uint8_t row_span,
                             lv_grid_align_t x_align = LV_GRID_ALIGN_CENTER,
-                          lv_grid_align_t y_align = LV_GRID_ALIGN_CENTER) {
+                            lv_grid_align_t y_align = LV_GRID_ALIGN_CENTER) {
         if (!widget.lvObj()) return;
         lv_obj_set_grid_cell(widget.lvObj(), x_align, col, col_span, y_align, row, row_span);
     }
@@ -108,40 +111,3 @@ protected:
 };
 
 } // namespace ui
-
-/*
-#include "LvglContainer.h"
-#include "LvglLabel.h"
-#include "LvglButton.h"
-
-using namespace ui;
-
-void create_ui(lv_obj_t* screen) {
-    auto container = std::make_unique<LvglContainer>(
-        screen,
-        LvglContainer::LayoutType::GRID
-    );
-
-    container->setSize(260, 180);
-    container->setGridLayout(
-        { LV_GRID_FR(1), LV_GRID_FR(2), LV_GRID_FR(1) },
-        { LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT }
-    );
-
-    // Add a label
-    auto& lbl_title = container->add<LvglLabel>("System Settings", LV_ALIGN_CENTER);
-    LvglContainer::setGridCell(lbl_title, 0, 3, 0, 1, LV_ALIGN_CENTER);
-
-    // Add another label
-    auto& lbl_wifi = container->add<LvglLabel>("Wi-Fi:");
-    LvglContainer::setGridCell(lbl_wifi, 0, 1, 1, 1, LV_ALIGN_CENTER);
-
-    // Add a button
-    auto& btn_wifi = container->add<LvglButton>("Connect", [](lv_event_t* e) {
-        printf("Wi-Fi Connect pressed!\n");
-    });
-    LvglContainer::setGridCell(btn_wifi, 1, 2, 1, 1, LV_ALIGN_CENTER);
-
-    // Keep container around if needed
-}
-    */
