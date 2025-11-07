@@ -22,14 +22,11 @@ public:
                  lv_coord_t x_ofs = 0,
                  lv_coord_t y_ofs = 0,
                  lv_coord_t width = 160)
-        : LvglWidgetBase(lv_dropdown_create(parent), "dropdown"),
-          callback_(std::move(cb))
+        : LvglWidgetBase(parent), callback_(std::move(cb))
     {
+        lvObj_ = lv_dropdown_create(parent);
         lv_obj_set_width(lvObj_, width);
-
-        // ✅ Alignment API change in LVGL 9
-        lv_obj_set_align(lvObj_, align);
-        if (x_ofs || y_ofs) lv_obj_set_pos(lvObj_, x_ofs, y_ofs);
+        lv_obj_align(lvObj_, align, x_ofs, y_ofs);
 
         if (!options.empty())
             setOptions(options);
@@ -39,9 +36,6 @@ public:
         applyTheme();
     }
 
-    //
-    // 🔹 Options handling
-    //
     void setOptions(const std::vector<std::string>& options) {
         std::string joined;
         for (size_t i = 0; i < options.size(); ++i) {
@@ -77,28 +71,36 @@ public:
         callback_ = std::move(cb);
     }
 
-    //
-    // 🔹 Theme integration
-    //
     void applyTheme() override {
         auto theme = LvglTheme::active();
         if (!theme) return;
 
         const LvglStyle* main     = theme->get("dropdown.main");
         const LvglStyle* selected = theme->get("dropdown.selected");
-        const LvglStyle* list     = theme->get("dropdown.list"); // optional part
 
         lv_obj_remove_style_all(lvObj_);
 
         if (main)     main->applyTo(lvObj_, LV_PART_MAIN);
         if (selected) selected->applyTo(lvObj_, LV_PART_SELECTED);
-
-        // ✅ LVGL 9: dropdown’s list is a child object, style it too if available
-        if (list) {
-            lv_obj_t* list_obj = lv_dropdown_get_list(lvObj_);
-            if (list_obj) list->applyTo(list_obj, LV_PART_MAIN);
-        }
     }
+
+    // static void registerDefaultStyles(LvglTheme& theme) {
+    //     theme.defineStyle("dropdown.main")
+    //         .bgColor(lv_color_hex(0x303030))
+    //         .textColor(lv_color_white())
+    //         .radius(6)
+    //         .padAll(4);
+
+    //     theme.defineStyle("dropdown.list")
+    //         .bgColor(lv_color_hex(0x202020))
+    //         .borderWidth(1)
+    //         .borderColor(lv_color_hex(0x505050))
+    //         .radius(6);
+
+    //     theme.defineStyle("dropdown.selected")
+    //         .bgColor(lv_color_hex(0x50C878))
+    //         .textColor(lv_color_white());
+    // }
 
 private:
     static void event_trampoline(lv_event_t* e) {

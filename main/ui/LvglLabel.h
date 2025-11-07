@@ -4,7 +4,6 @@
 #include <lvgl.h>
 #include <string>
 #include "LvglWidgetBase.h"
-#include "LvglTheme.h"
 
 namespace ui {
 
@@ -19,10 +18,7 @@ public:
         : LvglWidgetBase(lv_label_create(parent), "label")
     {
         lv_label_set_text(lvObj_, text.c_str());
-
-        // ✅ LVGL 9 alignment (old lv_obj_align deprecated)
-        lv_obj_set_align(lvObj_, align);
-        if (x_ofs || y_ofs) lv_obj_set_pos(lvObj_, x_ofs, y_ofs);
+        lv_obj_align(lvObj_, align, x_ofs, y_ofs);
 
         if (font)
             lv_obj_set_style_text_font(lvObj_, font, LV_PART_MAIN);
@@ -35,14 +31,15 @@ public:
     }
 
     void applyTheme() override {
-        auto theme = LvglTheme::active();
-        if (!theme) return;
+    auto theme = LvglTheme::active();
+    if (!theme) return;
 
-        const LvglStyle* main = theme->get("label.main");
+    const LvglStyle* main = theme->get("label.main");
 
-        lv_obj_remove_style_all(lvObj_);
-        if (main) main->applyTo(lvObj_, LV_PART_MAIN);
-    }
+    lv_obj_remove_style_all(lvObj_);
+
+    if (main) main->applyTo(lvObj_, LV_PART_MAIN);
+}
 };
 
 } // namespace ui

@@ -12,16 +12,16 @@ dependencies:
       type: idf
     version: 5.5.1
   lvgl/lvgl:
-    component_hash: 17e68bfd21f0edf4c3ee838e2273da840bf3930e5dbc3bfa6c1190c3aed41f9f
+    component_hash: d7c1ac037ae6e85d94897f807d6e7ba0946a83e720074fc95a4f6241da9f9f53
     dependencies: []
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 9.4.0
+    version: 8.4.0
 direct_dependencies:
 - LovyanGFX_dev
 - idf
 - lvgl/lvgl
-manifest_hash: 837ff139bea73fe2ed04a3006f24acbf253c07d03ddaf27c2901b6482e8e8cc7
+manifest_hash: 6365a94872cf8f510c22eeeb7cd79c657a5c8003bf5518d4b5ed9aa2a4fd51a2
 target: esp32s3
 version: 2.0.0

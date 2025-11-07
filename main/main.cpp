@@ -19,7 +19,7 @@ namespace main
   const char *TAG = "main";
 
   // --- LVGL Variables ---
-  static lv_display_t *disp;
+  static lv_disp_draw_buf_t draw_buf;
   static lv_color_t *buf1;
   static lv_color_t *buf2;
 
@@ -59,7 +59,7 @@ namespace main
   }
 
   // --- Touchpad Read Callback ---
-  void my_touchpad_read(lv_indev_t * indev, lv_indev_data_t * data)
+  void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
   {
     lv_coord_t x = 0;
     lv_coord_t y = 0;
@@ -124,15 +124,21 @@ auto firstScreen = display::FirstScreen::instance();
     auto buffer_size = DisplayManager::bufferSize();
     buf1 = new lv_color_t[buffer_size];
     buf2 = new lv_color_t[buffer_size];
-    disp = lv_display_create(DisplayManager::gfx.screenWidth, DisplayManager::gfx.screenHeight);
-    lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
+    lv_disp_draw_buf_init(&draw_buf, buf1, buf2,buffer_size );
 
-    lv_display_set_buffers(disp, buf1, buf2, buffer_size, LV_DISPLAY_RENDER_MODE_PARTIAL);
-    lv_display_set_flush_cb(disp, DisplayManager::disp_flush);
+    static lv_disp_drv_t disp_drv;
+    lv_disp_drv_init(&disp_drv);
+    disp_drv.hor_res = DisplayManager::gfx.screenWidth;
+    disp_drv.ver_res = DisplayManager::gfx.screenHeight;
+    disp_drv.flush_cb = DisplayManager::disp_flush;
+    disp_drv.draw_buf = &draw_buf;
+    lv_disp_drv_register(&disp_drv);
 
-    lv_indev_t *indev = lv_indev_create();
-    lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
-    lv_indev_set_read_cb(indev, my_touchpad_read);
+    static lv_indev_drv_t indev_drv;
+    lv_indev_drv_init(&indev_drv);
+    indev_drv.type = LV_INDEV_TYPE_POINTER;
+    indev_drv.read_cb = my_touchpad_read;
+    lv_indev_t *indev = lv_indev_drv_register(&indev_drv);
     ESP_LOGI(TAG, "Touch indev registered: %p", indev);
 
     auto theme = std::make_shared<ui::LvglTheme>("Default");

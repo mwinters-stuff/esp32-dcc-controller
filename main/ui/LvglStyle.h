@@ -11,6 +11,7 @@ public:
         lv_style_init(&style_);
     }
 
+    // Non-copyable (lv_style_t itself can't be copied)
     LvglStyle(const LvglStyle&) = delete;
     LvglStyle& operator=(const LvglStyle&) = delete;
 
@@ -35,14 +36,14 @@ public:
         }
     }
 
-    // clone properties
+    // Clone-style copy (copies only cached properties)
     LvglStyle& copyFrom(const LvglStyle& other) {
         copyCacheFrom(other);
         return *this;
     }
 
     //
-    // Fluent property setters
+    // Fluent setters (update cache + style object)
     //
     LvglStyle& bgColor(lv_color_t color) {
         bg_color_ = color;
@@ -115,28 +116,11 @@ public:
     }
 
     //
-    // Apply to an LVGL object
+    // Apply to LVGL object
     //
-    void applyToPart(lv_obj_t* obj, lv_part_t part = LV_PART_MAIN) const {
+    void applyTo(lv_obj_t* obj, lv_part_t part = LV_PART_MAIN, lv_state_t state = LV_STATE_DEFAULT) const {
         if (!obj) return;
-
-        // In LVGL 9: states are no longer part of the selector argument.
-        // Add style to the given part only.
-        lv_obj_add_style(obj, const_cast<lv_style_t*>(&style_), part);
-    }
-
-    void applyTo(lv_obj_t* obj,
-                lv_part_t part = LV_PART_MAIN,
-                lv_state_t state = LV_STATE_DEFAULT) const
-    {
-        if (!obj) return;
-
-        // Build a selector (lv_style_selector_t is an OR-ed bitmask of part + state)
-        lv_style_selector_t sel =
-            static_cast<lv_style_selector_t>(part) |
-            static_cast<lv_style_selector_t>(state);
-
-        lv_obj_add_style(obj, const_cast<lv_style_t*>(&style_), sel);
+        lv_obj_add_style(obj, const_cast<lv_style_t*>(&style_), (lv_part_t)(part | state));
     }
 
 private:

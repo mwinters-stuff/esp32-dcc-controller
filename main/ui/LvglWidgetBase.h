@@ -11,7 +11,7 @@ namespace ui {
 class LvglWidgetBase {
 public:
     explicit LvglWidgetBase(lv_obj_t* obj, std::string styleKey = "")
-        : lvObj_(obj), styleKey_(std::move(styleKey))
+        : lvObj_(obj), styleKey_(std::move(styleKey)) 
     {
         if (auto theme = LvglTheme::active()) {
             applyTheme();
@@ -22,33 +22,34 @@ public:
 
     lv_obj_t* lvObj() const { return lvObj_; }
 
-    virtual void applyTheme() {
-       auto theme = LvglTheme::active();
-        if (!theme || styleKey_.empty()) return;
+    // Reapply current theme (for runtime theme switching)
+    virtual void applyTheme()  {
+      auto theme = LvglTheme::active();
+      if (!theme || styleKey_.empty()) return;
 
-        const auto& style = theme->style(styleKey_);
-        style.applyTo(lvObj_);
+      const auto& style = theme->style(styleKey_);
+      style.applyTo(lvObj_);
 
-        // Smooth transition for visual polish
-        static const lv_style_prop_t props[] = {
-            LV_STYLE_BG_COLOR,
-            LV_STYLE_TEXT_COLOR,
-            LV_STYLE_BORDER_COLOR,
-            LV_STYLE_SHADOW_COLOR,
-            0 // terminator
-        };
+      // Smooth transition for visual polish
+      static const lv_style_prop_t props[] = {
+          LV_STYLE_BG_COLOR,
+          LV_STYLE_TEXT_COLOR,
+          LV_STYLE_BORDER_COLOR,
+          LV_STYLE_SHADOW_COLOR,
+          (lv_style_prop_t)0
+      };
 
-        static lv_style_transition_dsc_t trans;
-        static bool initialized = false;
+      static lv_style_transition_dsc_t trans;
+      static bool initialized = false;
+      if (!initialized) {
+          lv_style_transition_dsc_init(&trans, props, lv_anim_path_ease_in_out, 300, 0, nullptr);
+          initialized = true;
+      }
 
-        if (!initialized) {
-            lv_style_transition_dsc_init(&trans, props, &lv_anim_path_ease_in_out, 300, 0, nullptr);
-            initialized = true;
-        }
+      lv_obj_set_style_transition(lvObj_, &trans, LV_PART_MAIN);
+  }
 
-        lv_obj_set_style_transition(lvObj_, &trans, LV_PART_MAIN);
-    }
-
+    // Change which style key this widget uses
     void setStyleKey(const std::string& key) {
         styleKey_ = key;
         applyTheme();
@@ -60,12 +61,11 @@ public:
         auto theme = LvglTheme::active();
         auto s = theme->get(styleName);
         if (s) {
-            s->applyToPart(lvObj_);
+            s->applyTo(lvObj_);
         }
     }
 
-    // Alignment API changed: lv_obj_align() is simplified
-    void setAlignment(lv_align_t align, lv_coord_t x_ofs = 0, lv_coord_t y_ofs = 0) {
+     void setAlignment(lv_align_t align, lv_coord_t x_ofs = 0, lv_coord_t y_ofs = 0) {
         if (lvObj_) lv_obj_align(lvObj_, align, x_ofs, y_ofs);
     }
 
@@ -81,23 +81,17 @@ public:
         if (lvObj_) lv_obj_set_style_text_color(lvObj_, color, LV_PART_MAIN);
     }
 
-    // LVGL 9: lv_obj_clear_flag() renamed to lv_obj_remove_flag()
     void setVisible(bool visible) {
-        if (lvObj_) {
-            if (visible)
-                lv_obj_remove_flag(lvObj_, LV_OBJ_FLAG_HIDDEN);
-            else
-                lv_obj_add_flag(lvObj_, LV_OBJ_FLAG_HIDDEN);
-        }
+        if (lvObj_) lv_obj_add_flag(lvObj_, visible ? LV_OBJ_FLAG_HIDDEN : 0);
     }
 
     void setEnabled(bool enabled) {
-        if (lvObj_) {
-            if (enabled)
-                lv_obj_remove_state(lvObj_, LV_STATE_DISABLED);
-            else
-                lv_obj_add_state(lvObj_, LV_STATE_DISABLED);
-        }
+      if(lvObj_)  {
+        if (enabled)
+            lv_obj_clear_state(lvObj_, LV_STATE_DISABLED);
+        else
+            lv_obj_add_state(lvObj_, LV_STATE_DISABLED);
+      }
     }
 
 protected:
@@ -108,3 +102,5 @@ protected:
 } // namespace ui
 
 #endif
+
+

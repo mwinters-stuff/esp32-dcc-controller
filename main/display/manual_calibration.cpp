@@ -16,17 +16,19 @@ namespace display {
 #define NVS_CALIBRATION "calib"
 
 void  ManualCalibration::show(lv_obj_t* parent){
-   Screen::show(parent); // Ensure base setup (sets lvObj_, applies theme, etc.)
+    lv_obj_t* scr = lv_scr_act();
+    
+    lv_obj_clean(scr);
 
-   lbl_title = std::make_shared<ui::LvglLabel>(
-       lvObj_, "Calibrate Screen", LV_ALIGN_TOP_MID, 0, 20, &::lv_font_montserrat_30);
+    lbl_title = std::make_shared<ui::LvglLabel>(
+        scr, "Calibrate Screen", LV_ALIGN_TOP_MID, 0, 20, &::lv_font_montserrat_30);
     lbl_title->setColor(lv_palette_main(LV_PALETTE_BLUE));
 
     lbl_sub_title = std::make_shared<ui::LvglLabel>(
-        lvObj_, "Touch corners to calibrate", LV_ALIGN_CENTER, 0, 0);
+        scr, "Touch corners to calibrate", LV_ALIGN_CENTER, 0, 0);
 
     btn_start = std::make_shared<ui::LvglButton>(
-        lvObj_, "Start Calibration",
+        scr, "Start Calibration",
         [this](lv_event_t* e) {
             if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
                 LV_LOG_USER("Start Calibration");
@@ -37,70 +39,13 @@ void  ManualCalibration::show(lv_obj_t* parent){
         200, 48, LV_ALIGN_BOTTOM_MID, 0, -80
     );
 
-}
 
-struct CancelTimerData {
-    std::shared_ptr<Screen> prev;
-    ManualCalibration* self;
-};
-
-// file-local timer callback (use lv_timer_get_user_data to avoid accessing lv_timer_t fields)
-static void cancel_timer_cb(lv_timer_t * t) {
-    if (!t) return;
-    void *ud = lv_timer_get_user_data(t);
-    auto *d = static_cast<CancelTimerData*>(ud);
-    if (d) {
-        //d->self->cleanUp();
-
-        if (d->prev) {
-            d->prev->show();
-        } else {
-            ESP_LOGW("MANUAL_CALIBRATION", "Previous screen expired, nothing to show");
-        }
-        
-        delete d;
-    }
-    lv_timer_del(t);
-}
-
-void ManualCalibration::addBackButton(std::weak_ptr<Screen> previousScreen){
-    previousScreen_ = previousScreen;
-
-    btn_cancel = std::make_shared<ui::LvglButton>(
-        lvObj_, "Cancel",
-        [this, previous = previousScreen_](lv_event_t* e) {
-            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                ESP_LOGI(TAG, "Cancel Calibration");
-                // lock now to obtain shared_ptr snapshot
-                auto prev = previous.lock();
-
-                // allocate data for timer
-                auto *data = new CancelTimerData{ prev, this };
-
-                // create a short-lived timer to run after the event handler returns
-                lv_timer_t *tm = lv_timer_create(cancel_timer_cb, 1 /*ms*/, data);
-
-                // fallback if timer creation failed
-                if (!tm) {
-                    if (prev) prev->show();
-                    this->cleanUp();
-                    delete data;
-                }
-            }
-        },
-        200, 48, LV_ALIGN_BOTTOM_MID, 0, -20
-    );
 }
 
 void ManualCalibration::cleanUp(){
     lbl_title.reset();
     lbl_sub_title.reset();
     btn_start.reset();
-    btn_cancel.reset();
-    // reset weak ref
-    previousScreen_.reset();
-
-    Screen::cleanUp();
 }
 
 void ManualCalibration::rebootToCalibrate(){
