@@ -32,6 +32,7 @@ public:
     calibrateState loadCalibrationFromNVS();
     virtual void cleanUp() override;
     void calibrate();
+    void addBackButton(std::weak_ptr<Screen> screenToShow);
 
     // non-copyable, non-movable
    ManualCalibration(const ManualCalibration&) = delete;
@@ -47,6 +48,7 @@ private:
     std::shared_ptr<ui::LvglLabel> lbl_title;
     std::shared_ptr<ui::LvglLabel> lbl_sub_title;
     std::shared_ptr<ui::LvglButton> btn_start;
+    std::shared_ptr<ui::LvglButton> btn_back;
 
     uint16_t parameters[8];
 

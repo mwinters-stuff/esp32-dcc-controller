@@ -16,19 +16,17 @@ namespace display {
 #define NVS_CALIBRATION "calib"
 
 void  ManualCalibration::show(lv_obj_t* parent){
-    lv_obj_t* scr = lv_scr_act();
-    
-    lv_obj_clean(scr);
+    Screen::show(parent); // Ensure base setup (sets lvObj_, applies theme, etc.)
 
     lbl_title = std::make_shared<ui::LvglLabel>(
-        scr, "Calibrate Screen", LV_ALIGN_TOP_MID, 0, 20, &::lv_font_montserrat_30);
+        lvObj_, "Calibrate Screen", LV_ALIGN_TOP_MID, 0, 20, &::lv_font_montserrat_30);
     lbl_title->setColor(lv_palette_main(LV_PALETTE_BLUE));
 
     lbl_sub_title = std::make_shared<ui::LvglLabel>(
-        scr, "Touch corners to calibrate", LV_ALIGN_CENTER, 0, 0);
+        lvObj_, "Touch corners to calibrate", LV_ALIGN_CENTER, 0, 0);
 
     btn_start = std::make_shared<ui::LvglButton>(
-        scr, "Start Calibration",
+        lvObj_, "Start Calibration",
         [this](lv_event_t* e) {
             if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
                 LV_LOG_USER("Start Calibration");
@@ -42,10 +40,27 @@ void  ManualCalibration::show(lv_obj_t* parent){
 
 }
 
+void ManualCalibration::addBackButton(std::weak_ptr<Screen> screenToShow){
+    btn_back = std::make_shared<ui::LvglButton>(
+        lvObj_, "Back",
+        [this, screenToShow](lv_event_t* e) {
+            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+                LV_LOG_USER("Back button clicked");
+                if(auto screen = screenToShow.lock()){
+                    screen->show();
+                }
+            }
+        },
+        200, 48, LV_ALIGN_BOTTOM_MID, 0, -20
+    );
+    btn_back->setStyle("button.secondary");
+}
+
 void ManualCalibration::cleanUp(){
     lbl_title.reset();
     lbl_sub_title.reset();
     btn_start.reset();
+    btn_back.reset();
 }
 
 void ManualCalibration::rebootToCalibrate(){

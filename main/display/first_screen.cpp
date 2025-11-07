@@ -58,9 +58,11 @@ namespace display
                     ESP_LOGI(TAG, "Calibrate button clicked!");
                     auto calScreen = ManualCalibration::instance();
                     calScreen->show();
+                    calScreen->addBackButton(FirstScreen::instance());
                 }
             },
             200, 48, LV_ALIGN_CENTER, 0, 60);
+        
         btn_cal->setStyle("button.secondary");
 
         ESP_LOGI(TAG, "FirstScreen UI created");
