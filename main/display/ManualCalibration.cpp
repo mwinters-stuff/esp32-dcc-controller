@@ -4,26 +4,26 @@
 #include <nvs.h>
 #include <nvs_handle.hpp>
 #include <esp_system.h>
-#include "display_manager.h"
-#include "manual_calibration.h"
+#include "DisplayManager.h"
+#include "ManualCalibration.h"
+#include "definitions.h"
 #include <array>
 #include <cmath>
 
 namespace display {
 
-#define NVS_NAMESPACE "touch_cal"
-#define NVS_CALIBRATION_SAVED "cal_saved"
-#define NVS_CALIBRATION "calib"
+static const char *TAG = "MANUAL_CALIBRATION";
 
-void  ManualCalibration::show(lv_obj_t* parent){
-    Screen::show(parent); // Ensure base setup (sets lvObj_, applies theme, etc.)
+void  ManualCalibration::show(lv_obj_t* parent, std::weak_ptr<Screen> parentScreen){
+    Screen::show(parent, parentScreen); // Ensure base setup (sets lvObj_, applies theme, etc.)
 
     lbl_title = std::make_shared<ui::LvglLabel>(
-        lvObj_, "Calibrate Screen", LV_ALIGN_TOP_MID, 0, 20, &::lv_font_montserrat_30);
-    lbl_title->setColor(lv_palette_main(LV_PALETTE_BLUE));
+        lvObj_, "Calibrate Screen", LV_ALIGN_TOP_MID, 0, 20);
+    lbl_title->setStyle("label.title");
 
     lbl_sub_title = std::make_shared<ui::LvglLabel>(
         lvObj_, "Touch corners to calibrate", LV_ALIGN_CENTER, 0, 0);
+    lbl_sub_title->setStyle("label.main");
 
     btn_start = std::make_shared<ui::LvglButton>(
         lvObj_, "Start Calibration",
@@ -36,24 +36,24 @@ void  ManualCalibration::show(lv_obj_t* parent){
         },
         200, 48, LV_ALIGN_BOTTOM_MID, 0, -80
     );
+    btn_start->setStyle("button.primary");
 
-
-}
-
-void ManualCalibration::addBackButton(std::weak_ptr<Screen> screenToShow){
-    btn_back = std::make_shared<ui::LvglButton>(
-        lvObj_, "Back",
-        [this, screenToShow](lv_event_t* e) {
-            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                LV_LOG_USER("Back button clicked");
-                if(auto screen = screenToShow.lock()){
-                    screen->show();
+    if(parentScreen_.expired() == false){ 
+        btn_back = std::make_shared<ui::LvglButton>(
+            lvObj_, "Back",
+            [this](lv_event_t* e) {
+                if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+                    LV_LOG_USER("Back button clicked");
+                    if (auto screen = parentScreen_.lock()) {
+                        screen->show();
+                    }
                 }
-            }
-        },
-        200, 48, LV_ALIGN_BOTTOM_MID, 0, -20
-    );
-    btn_back->setStyle("button.secondary");
+            },
+             200, 48, LV_ALIGN_BOTTOM_MID, 0, -20
+        );
+        btn_back->setStyle("button.secondary");
+    }
+
 }
 
 void ManualCalibration::cleanUp(){

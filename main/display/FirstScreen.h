@@ -1,5 +1,5 @@
 #pragma once
-#include "screen.h"
+#include "Screen.h"
 #include "ui/LvglButton.h"
 #include "ui/LvglLabel.h"
 #include <memory>
@@ -17,7 +17,7 @@ public:
 
     ~FirstScreen() override = default;
 
-    void show(lv_obj_t* parent = nullptr) override;
+    void show(lv_obj_t* parent = nullptr, std::weak_ptr<Screen> parentScreen = std::weak_ptr<Screen>{}) override;
     void cleanUp() override;
 
     FirstScreen(const FirstScreen&) = delete;
@@ -27,7 +27,6 @@ protected:
     FirstScreen() = default;
 
 private:
-    const char* TAG = "FIRST_SCREEN";
 
     std::shared_ptr<ui::LvglLabel> lbl_title;
     std::shared_ptr<ui::LvglButton> btn_connect;

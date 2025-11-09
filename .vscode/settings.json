@@ -96,5 +96,7 @@
     "variant": "cpp"
   },
   "files.autoSave": "afterDelay",
-  "idf.notificationMode": "Silent"
+  "idf.notificationMode": "Silent",
+  "editor.tabSize": 2,
+  "editor.detectIndentation": false
 }

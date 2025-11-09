@@ -12,6 +12,8 @@ idf_component_register(
     ${SOURCE_FILES_DISPLAY}
   
   PRIV_REQUIRES 
+    esp_event 
+    lwip
     esp_wifi 
     nvs_flash
     spi_flash

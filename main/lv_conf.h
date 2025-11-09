@@ -524,6 +524,8 @@
 
 #define LV_USE_MSGBOX     1
 
+#define LV_USE_MSG        1
+
 #define LV_USE_SPINBOX    1
 
 #define LV_USE_SPINNER    1

@@ -1,22 +1,23 @@
-#ifndef _LVGL_DROPDOWN_H
-#define _LVGL_DROPDOWN_H
+#pragma once
 
-#include <lvgl.h>
+#include "LvglStyle.h"
+#include "LvglTheme.h"
+#include "LvglWidgetBase.h"
 #include <functional>
+#include <lvgl.h>
 #include <string>
 #include <vector>
-#include "LvglWidgetBase.h"
-#include "LvglTheme.h"
-#include "LvglStyle.h"
 
-namespace ui {
+namespace ui
+{
 
-class LvglDropdown : public LvglWidgetBase {
-public:
-    using EventCallback = std::function<void(lv_event_t*)>;
+  class LvglDropdown : public LvglWidgetBase
+  {
+  public:
+    using EventCallback = std::function<void(lv_event_t *)>;
 
-    LvglDropdown(lv_obj_t* parent,
-                 const std::vector<std::string>& options = {},
+    LvglDropdown(lv_obj_t *parent,
+                 const std::vector<std::string> &options = {},
                  EventCallback cb = nullptr,
                  lv_align_t align = LV_ALIGN_CENTER,
                  lv_coord_t x_ofs = 0,
@@ -24,64 +25,77 @@ public:
                  lv_coord_t width = 160)
         : LvglWidgetBase(parent), callback_(std::move(cb))
     {
-        lvObj_ = lv_dropdown_create(parent);
-        lv_obj_set_width(lvObj_, width);
-        lv_obj_align(lvObj_, align, x_ofs, y_ofs);
+      lvObj_ = lv_dropdown_create(parent);
+      lv_obj_set_width(lvObj_, width);
+      lv_obj_align(lvObj_, align, x_ofs, y_ofs);
 
-        if (!options.empty())
-            setOptions(options);
+      if (!options.empty())
+        setOptions(options);
 
-        lv_obj_add_event_cb(lvObj_, &LvglDropdown::event_trampoline, LV_EVENT_ALL, this);
+      lv_obj_add_event_cb(lvObj_, &LvglDropdown::event_trampoline, LV_EVENT_ALL, this);
 
-        applyTheme();
+      applyTheme();
     }
 
-    void setOptions(const std::vector<std::string>& options) {
-        std::string joined;
-        for (size_t i = 0; i < options.size(); ++i) {
-            joined += options[i];
-            if (i + 1 < options.size()) joined += "\n";
-        }
-        lv_dropdown_set_options(lvObj_, joined.c_str());
+    void setOptions(const std::vector<std::string> &options)
+    {
+      std::string joined;
+      for (size_t i = 0; i < options.size(); ++i)
+      {
+        joined += options[i];
+        if (i + 1 < options.size())
+          joined += "\n";
+      }
+      lv_dropdown_set_options(lvObj_, joined.c_str());
     }
 
-    void clearOptions() {
-        lv_dropdown_clear_options(lvObj_);
+    void clearOptions()
+    {
+      lv_dropdown_clear_options(lvObj_);
     }
 
-    void addOption(const std::string& option, uint16_t pos = LV_DROPDOWN_POS_LAST) {
-        lv_dropdown_add_option(lvObj_, option.c_str(), pos);
+    void addOption(const std::string &option, uint16_t pos = LV_DROPDOWN_POS_LAST)
+    {
+      lv_dropdown_add_option(lvObj_, option.c_str(), pos);
     }
 
-    uint16_t getSelected() const {
-        return lv_dropdown_get_selected(lvObj_);
+    uint16_t getSelected() const
+    {
+      return lv_dropdown_get_selected(lvObj_);
     }
 
-    void setSelected(uint16_t index) {
-        lv_dropdown_set_selected(lvObj_, index);
+    void setSelected(uint16_t index)
+    {
+      lv_dropdown_set_selected(lvObj_, index);
     }
 
-    std::string getSelectedStr() const {
-        char buf[128];
-        lv_dropdown_get_selected_str(lvObj_, buf, sizeof(buf));
-        return std::string(buf);
+    std::string getSelectedStr() const
+    {
+      char buf[128];
+      lv_dropdown_get_selected_str(lvObj_, buf, sizeof(buf));
+      return std::string(buf);
     }
 
-    void setCallback(EventCallback cb) {
-        callback_ = std::move(cb);
+    void setCallback(EventCallback cb)
+    {
+      callback_ = std::move(cb);
     }
 
-    void applyTheme() override {
-        auto theme = LvglTheme::active();
-        if (!theme) return;
+    void applyTheme() override
+    {
+      auto theme = LvglTheme::active();
+      if (!theme)
+        return;
 
-        const LvglStyle* main     = theme->get("dropdown.main");
-        const LvglStyle* selected = theme->get("dropdown.selected");
+      const LvglStyle *main = theme->get("dropdown.main");
+      const LvglStyle *selected = theme->get("dropdown.selected");
 
-        lv_obj_remove_style_all(lvObj_);
+      lv_obj_remove_style_all(lvObj_);
 
-        if (main)     main->applyTo(lvObj_, LV_PART_MAIN);
-        if (selected) selected->applyTo(lvObj_, LV_PART_SELECTED);
+      if (main)
+        main->applyTo(lvObj_, LV_PART_MAIN);
+      if (selected)
+        selected->applyTo(lvObj_, LV_PART_SELECTED);
     }
 
     // static void registerDefaultStyles(LvglTheme& theme) {
@@ -102,16 +116,15 @@ public:
     //         .textColor(lv_color_white());
     // }
 
-private:
-    static void event_trampoline(lv_event_t* e) {
-        auto* self = static_cast<LvglDropdown*>(lv_event_get_user_data(e));
-        if (self && self->callback_)
-            self->callback_(e);
+  private:
+    static void event_trampoline(lv_event_t *e)
+    {
+      auto *self = static_cast<LvglDropdown *>(lv_event_get_user_data(e));
+      if (self && self->callback_)
+        self->callback_(e);
     }
 
     EventCallback callback_;
-};
+  };
 
 } // namespace ui
-
-#endif

@@ -1,6 +1,6 @@
 #pragma once
 #include <lvgl.h>
-#include "screen.h"
+#include "Screen.h"
 #include "ui/LvglButton.h"
 #include "ui/LvglLabel.h"
 #include <memory>
@@ -28,7 +28,7 @@ public:
     virtual ~ManualCalibration() = default;
 
     // existing public API
-    virtual void show(lv_obj_t* parent = nullptr) override;
+    virtual void show(lv_obj_t* parent = nullptr, std::weak_ptr<Screen> parentScreen = std::weak_ptr<Screen>{}) override;
     calibrateState loadCalibrationFromNVS();
     virtual void cleanUp() override;
     void calibrate();
@@ -44,7 +44,6 @@ protected:
     ManualCalibration() {}; // protected ctor
 
 private:
-    const char *TAG = "MANUAL_CALIBRATION";
     std::shared_ptr<ui::LvglLabel> lbl_title;
     std::shared_ptr<ui::LvglLabel> lbl_sub_title;
     std::shared_ptr<ui::LvglButton> btn_start;

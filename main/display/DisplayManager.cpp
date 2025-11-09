@@ -1,4 +1,4 @@
-#include "display_manager.h"
+#include "DisplayManager.h"
 
 LGFX DisplayManager::gfx;
 

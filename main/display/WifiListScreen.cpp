@@ -1,54 +1,221 @@
 #include "WifiListScreen.h"
+#include "WifiConnectScreen.h"
+#include "definitions.h"
+#include <esp_event.h>
 #include <esp_log.h>
+#include <nvs_flash.h>
+#include <regex.h>
+#include <string>
 
-namespace display {
-void WifiListScreen::show(lv_obj_t* parent) {
-    Screen::show(parent);  // Ensure base setup (sets lvObj_, applies theme, etc.)
-    
-      // Full-screen container
+namespace display
+{
+  std::shared_ptr<WifiListItem> WifiListItem::currentWifiItem = nullptr;
+  lv_obj_t *WifiListItem::currentButton;
+
+static const char *TAG = "WIFI_LIST_SCREEN";
+
+
+  void WifiListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen)
+  {
+    Screen::show(parent, parentScreen); // Ensure base setup (sets lvObj_, applies theme, etc.)
+
+    // Full-screen container
     lv_obj_set_size(lvObj_, LV_HOR_RES, LV_VER_RES);
     lv_obj_clear_flag(lvObj_, LV_OBJ_FLAG_SCROLLABLE);
 
     // Title label at top
     lbl_title_ = std::make_unique<LvglLabel>(lvObj_, "WiFi List", LV_ALIGN_TOP_MID, 0, 8);
-    // Make title stand out if theme provides label.large
-    if (auto style = LvglTheme::active() ? LvglTheme::active()->get("label.main") : nullptr) {
-        style->applyTo(lbl_title_->lvObj(), LV_PART_MAIN);
-    }
+    lbl_title_->setStyle("label.title");
+
+    btn_back_ = std::make_unique<LvglButton>(lvObj_, "Back", [this](lv_event_t *e)
+                                             {
+                                                     // Handle back action
+                                                     if (lv_event_get_code(e) == LV_EVENT_CLICKED)
+                                                     {
+                                                         ESP_LOGI("WIFI_LIST_SCREEN", "Back button pressed");
+                                                         if (auto screen = parentScreen_.lock())
+                                                         {
+                                                             screen->show();
+                                                         }
+                                                     } });
+    btn_back_->setStyle("button.secondary");
+    btn_back_->setAlignment(LV_ALIGN_BOTTOM_LEFT, 8, -12);
+    btn_back_->setSize(100, 40);
+
+    btn_connect_ = std::make_unique<LvglButton>(lvObj_, "Connect", [](lv_event_t *e)
+                                                {
+                                                  if (lv_event_get_code(e) == LV_EVENT_CLICKED)
+                                                  {
+                                                    ESP_LOGI("WIFI_LIST_SCREEN", "Connect button pressed");
+                                                    if (WifiConnectScreen::instance() && WifiListItem::currentWifiItem)
+                                                    {
+
+                                                      WifiConnectScreen::instance()->setSSID(WifiListItem::currentWifiItem->ssid());
+                                                      WifiConnectScreen::instance()->show(nullptr, WifiListScreen::instance());
+                                                    }
+                                                  }
+                                                  // Handle connect action
+                                                });
+    btn_connect_->setStyle("button.primary");
+    btn_connect_->setAlignment(LV_ALIGN_BOTTOM_RIGHT, -8, -12);
+    btn_connect_->setSize(100, 40);
 
     // List view below
-    list_view_ = std::make_unique<LvglListView>(lvObj_);
-    lv_obj_set_height(list_view_->lvObj(), LV_PCT(86));
-    lv_obj_align(list_view_->lvObj(), LV_ALIGN_BOTTOM_MID, 0, 0);
-    
+    list_view_ = std::make_unique<LvglListView>(lvObj_, 0, 40, 320, 380);
+
     ESP_LOGI("WIFI_LIST_SCREEN", "WifiListScreen shown");
 
-}
+    items_.clear();
+    
+     // Create spinner overlay (centered)
+    spinner_ = lv_spinner_create(lvObj_, 1000, 60);
+    lv_obj_center(spinner_);
+    lv_obj_set_size(spinner_, 60, 60);
+    lv_obj_clear_flag(spinner_, LV_OBJ_FLAG_HIDDEN);
 
-void WifiListScreen::cleanUp() {
+    // Start Wi-Fi scan in a separate task
+    xTaskCreatePinnedToCore(
+        [](void *param)
+        {
+            auto *self = static_cast<WifiListScreen *>(param);
+            self->scanWifiTask();
+            vTaskDelete(nullptr);
+        },
+        "wifi_scan_task",
+        4096,  // stack size
+        this,
+        5,     // priority
+        nullptr,
+        1      // run on core 1 (UI often on core 0)
+    );
+  }
+
+  void WifiListScreen::cleanUp()
+  {
     ESP_LOGI("WIFI_LIST_SCREEN", "WifiListScreen cleaned up");
     Screen::cleanUp();
     lbl_title_.reset();
     list_view_.reset();
     items_.clear();
+    btn_back_.reset();
+    btn_connect_.reset();
+    if (spinner_)
+    {
+        lv_obj_del(spinner_);
+        spinner_ = nullptr;
+    }
+  }
+
+void WifiListScreen::scanWifiTask()
+{
+    ESP_LOGI(TAG, "Starting background Wi-Fi scan...");
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    wifi_scan_config_t scan_conf = {};
+    scan_conf.ssid = nullptr;
+    scan_conf.bssid = nullptr;
+    scan_conf.channel = 0;
+    scan_conf.show_hidden = true;
+
+    ESP_ERROR_CHECK(esp_wifi_scan_start(&scan_conf, true));
+
+    uint16_t ap_count = 0;
+    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
+    if (ap_count == 0)
+    {
+        ESP_LOGI(TAG, "No APs found");
+        lv_async_call([](void *data) {
+            auto self = static_cast<WifiListScreen *>(data);
+            lv_obj_add_flag(self->spinner_, LV_OBJ_FLAG_HIDDEN);
+        }, this);
+        return;
+    }
+
+    uint16_t max_records = std::min<uint16_t>(ap_count, DEFAULT_SCAN_LIST_SIZE);
+    std::vector<wifi_ap_record_t> ap_info(max_records);
+    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&max_records, ap_info.data()));
+
+    // Copy results into heap before passing to LVGL thread
+    auto *results = new std::vector<wifi_ap_record_t>(ap_info);
+
+    // Now update UI safely
+    lv_async_call([](void *data) {
+        auto *ctx = static_cast<std::pair<WifiListScreen *, std::vector<wifi_ap_record_t> *> *>(data);
+        auto *self = ctx->first;
+        auto *records = ctx->second;
+        self->populateList(*records);
+        lv_obj_add_flag(self->spinner_, LV_OBJ_FLAG_HIDDEN);
+        delete records;
+        delete ctx;
+    }, new std::pair<WifiListScreen *, std::vector<wifi_ap_record_t> *>(this, results));
+
+    ESP_ERROR_CHECK(esp_wifi_scan_stop());
+}
+
+void WifiListScreen::populateList(const std::vector<wifi_ap_record_t> &records)
+{
+    for (const auto &ap : records)
+    {
+        std::string ssid_str(reinterpret_cast<const char *>(ap.ssid),
+                             strnlen(reinterpret_cast<const char *>(ap.ssid), sizeof(ap.ssid)));
+        if (ssid_str.empty())
+            ssid_str = "<hidden>";
+
+        auto item = std::make_shared<WifiListItem>(list_view_->lvObj(), ssid_str, ap.rssi);
+        items_.push_back(item);
+    }
+
+    ESP_LOGI(TAG, "Wi-Fi scan complete, list populated with %u entries", (unsigned)records.size());
 }
 
 
-void WifiListScreen::setWifiList(const std::vector<std::pair<std::string,int>>& wifiList,
-                                 WifiListItem::TapCallback globalTap) {
-    // remove previous items
-    for (auto &it : items_) {
-        if (it && it->lvObj()) lv_obj_del(it->lvObj());
-    }
-    items_.clear();
+  // void WifiListScreen::scanWifi()
+  // {
+  //   // If wifi driver isn't started yet, start it. Only call this if you haven't started wifi.
 
-    // add new items
-    for (const auto& [ssid, rssi] : wifiList) {
-        auto item = std::make_unique<WifiListItem>(list_view_->lvObj(), ssid, rssi, globalTap);
-        items_.push_back(std::move(item));
-    }
+  //   ESP_ERROR_CHECK(esp_wifi_start()); // call this once when you want wifi running
 
-    ESP_LOGI("WIFI_LIST_SCREEN", "Wifi list updated with %zu items", items_.size());
-}
+  //   // Prepare scan config
+  //   wifi_scan_config_t scan_conf = {};
+  //   scan_conf.ssid = nullptr;
+  //   scan_conf.bssid = nullptr;
+  //   scan_conf.channel = 0;
+  //   scan_conf.show_hidden = true;
 
+  //   // Start a blocking scan (true == block until done)
+  //   ESP_ERROR_CHECK(esp_wifi_scan_start(&scan_conf, true));
+
+  //   uint16_t ap_count = 0;
+  //   ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
+  //   if (ap_count == 0)
+  //   {
+  //     ESP_LOGI(TAG, "No APs found");
+  //     return;
+  //   }
+
+  //   // Limit results to your buffer size
+  //   uint16_t max_records = std::min<uint16_t>(ap_count, DEFAULT_SCAN_LIST_SIZE);
+  //   std::vector<wifi_ap_record_t> ap_info(max_records);
+  //   memset(ap_info.data(), 0, ap_info.size() * sizeof(wifi_ap_record_t));
+
+  //   ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&max_records, ap_info.data()));
+  //   ESP_LOGI(TAG, "Total APs scanned = %u, returned = %u", ap_count, max_records);
+
+  //   for (uint16_t i = 0; i < max_records; ++i)
+  //   {
+  //     // safe conversion
+  //     size_t len = strnlen(reinterpret_cast<const char *>(ap_info[i].ssid), sizeof(ap_info[i].ssid));
+  //     std::string ssid_str(reinterpret_cast<const char *>(ap_info[i].ssid), len);
+  //     if (ssid_str.empty())
+  //     {
+  //       ssid_str = "<hidden>";
+  //     }
+
+  //     ESP_LOGI(TAG, "SSID: %s RSSI: %d", ssid_str.c_str(), ap_info[i].rssi);
+
+  //     auto item = std::make_shared<WifiListItem>(list_view_->lvObj(), ssid_str, ap_info[i].rssi);
+  //     items_.push_back(item);
+  //   }
+  //   ESP_ERROR_CHECK(esp_wifi_scan_stop());
+  // }
 };
