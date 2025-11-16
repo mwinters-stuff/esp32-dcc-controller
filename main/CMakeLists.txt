@@ -1,15 +1,13 @@
 set(SOURCE_FILES "")
-set(SOURCE_FILES_DISPLAY "")
-file(GLOB SOURCE_FILES "*.cpp")
-file(GLOB SOURCE_FILES_DISPLAY "display/*.cpp")
+file(GLOB_RECURSE SOURCE_FILES 
+  "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/display/*.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/utilities/*.cpp"
+)
 
 idf_component_register(
   SRCS 
-    # main.cpp
-    # display/first_screen.cpp
-    # display/calibrate_screen.cpp
     ${SOURCE_FILES}
-    ${SOURCE_FILES_DISPLAY}
   
   PRIV_REQUIRES 
     esp_event 

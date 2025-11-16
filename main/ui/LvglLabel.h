@@ -32,6 +32,40 @@ namespace ui
       lv_label_set_text(lvObj_, text.c_str());
     }
 
+    void setTextFmt(const char *fmt, ...)
+    {
+      if (!fmt)
+      {
+        lv_label_set_text(lvObj_, "");
+        return;
+      }
+
+      va_list ap;
+      va_start(ap, fmt);
+
+      lv_label_set_text_fmt(lvObj_, fmt, ap);
+
+      // // Determine required size
+      // va_list ap_copy;
+      // va_copy(ap_copy, ap);
+      // int needed = vsnprintf(nullptr, 0, fmt, ap_copy);
+      // va_end(ap_copy);
+
+      // if (needed < 0) {
+      //   va_end(ap);
+      //   return;
+      // }
+
+      // std::string buf;
+      // buf.resize(static_cast<size_t>(needed) + 1);
+      // vsnprintf(buf.data(), buf.size(), fmt, ap);
+      va_end(ap);
+
+      // // resize to exclude the trailing null for storage correctness
+      // buf.resize(static_cast<size_t>(needed));
+      // lv_label_set_text(lvObj_, buf.c_str());
+    }
+
     void applyTheme() override
     {
       auto theme = LvglTheme::active();
@@ -48,4 +82,3 @@ namespace ui
   };
 
 } // namespace ui
-

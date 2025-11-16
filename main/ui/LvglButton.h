@@ -11,8 +11,6 @@ namespace ui
   class LvglButton : public LvglWidgetBase
   {
   public:
-    using EventCallback = std::function<void(lv_event_t *)>;
-
     LvglButton(lv_obj_t *parent,
                const std::string &text,
                EventCallback cb = nullptr,

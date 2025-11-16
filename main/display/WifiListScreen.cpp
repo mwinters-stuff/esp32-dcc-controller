@@ -12,8 +12,7 @@ namespace display
   std::shared_ptr<WifiListItem> WifiListItem::currentWifiItem = nullptr;
   lv_obj_t *WifiListItem::currentButton;
 
-static const char *TAG = "WIFI_LIST_SCREEN";
-
+  static const char *TAG = "WIFI_LIST_SCREEN";
 
   void WifiListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen)
   {
@@ -66,27 +65,24 @@ static const char *TAG = "WIFI_LIST_SCREEN";
     ESP_LOGI("WIFI_LIST_SCREEN", "WifiListScreen shown");
 
     items_.clear();
-    
-     // Create spinner overlay (centered)
-    spinner_ = lv_spinner_create(lvObj_, 1000, 60);
-    lv_obj_center(spinner_);
-    lv_obj_set_size(spinner_, 60, 60);
-    lv_obj_clear_flag(spinner_, LV_OBJ_FLAG_HIDDEN);
+
+    // Create spinner overlay (centered)
+    spinner_ = std::make_unique<LvglSpinner>(lvObj_);
 
     // Start Wi-Fi scan in a separate task
     xTaskCreatePinnedToCore(
         [](void *param)
         {
-            auto *self = static_cast<WifiListScreen *>(param);
-            self->scanWifiTask();
-            vTaskDelete(nullptr);
+          auto *self = static_cast<WifiListScreen *>(param);
+          self->scanWifiTask();
+          vTaskDelete(nullptr);
         },
         "wifi_scan_task",
-        4096,  // stack size
+        4096, // stack size
         this,
-        5,     // priority
+        5, // priority
         nullptr,
-        1      // run on core 1 (UI often on core 0)
+        1 // run on core 1 (UI often on core 0)
     );
   }
 
@@ -99,15 +95,11 @@ static const char *TAG = "WIFI_LIST_SCREEN";
     items_.clear();
     btn_back_.reset();
     btn_connect_.reset();
-    if (spinner_)
-    {
-        lv_obj_del(spinner_);
-        spinner_ = nullptr;
-    }
+    spinner_.reset();
   }
 
-void WifiListScreen::scanWifiTask()
-{
+  void WifiListScreen::scanWifiTask()
+  {
     ESP_LOGI(TAG, "Starting background Wi-Fi scan...");
     ESP_ERROR_CHECK(esp_wifi_start());
 
@@ -123,12 +115,12 @@ void WifiListScreen::scanWifiTask()
     ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
     if (ap_count == 0)
     {
-        ESP_LOGI(TAG, "No APs found");
-        lv_async_call([](void *data) {
+      ESP_LOGI(TAG, "No APs found");
+      lv_async_call([](void *data)
+                    {
             auto self = static_cast<WifiListScreen *>(data);
-            lv_obj_add_flag(self->spinner_, LV_OBJ_FLAG_HIDDEN);
-        }, this);
-        return;
+            self->spinner_->hideSpinner(); }, this);
+      return;
     }
 
     uint16_t max_records = std::min<uint16_t>(ap_count, DEFAULT_SCAN_LIST_SIZE);
@@ -139,83 +131,33 @@ void WifiListScreen::scanWifiTask()
     auto *results = new std::vector<wifi_ap_record_t>(ap_info);
 
     // Now update UI safely
-    lv_async_call([](void *data) {
+    lv_async_call([](void *data)
+                  {
         auto *ctx = static_cast<std::pair<WifiListScreen *, std::vector<wifi_ap_record_t> *> *>(data);
         auto *self = ctx->first;
         auto *records = ctx->second;
         self->populateList(*records);
-        lv_obj_add_flag(self->spinner_, LV_OBJ_FLAG_HIDDEN);
+        self->spinner_->hideSpinner();
         delete records;
-        delete ctx;
-    }, new std::pair<WifiListScreen *, std::vector<wifi_ap_record_t> *>(this, results));
+        delete ctx; }, new std::pair<WifiListScreen *, std::vector<wifi_ap_record_t> *>(this, results));
 
     ESP_ERROR_CHECK(esp_wifi_scan_stop());
-}
+  }
 
-void WifiListScreen::populateList(const std::vector<wifi_ap_record_t> &records)
-{
+  void WifiListScreen::populateList(const std::vector<wifi_ap_record_t> &records)
+  {
     for (const auto &ap : records)
     {
-        std::string ssid_str(reinterpret_cast<const char *>(ap.ssid),
-                             strnlen(reinterpret_cast<const char *>(ap.ssid), sizeof(ap.ssid)));
-        if (ssid_str.empty())
-            ssid_str = "<hidden>";
+      std::string ssid_str(reinterpret_cast<const char *>(ap.ssid),
+                           strnlen(reinterpret_cast<const char *>(ap.ssid), sizeof(ap.ssid)));
+      if (ssid_str.empty())
+        ssid_str = "<hidden>";
 
-        auto item = std::make_shared<WifiListItem>(list_view_->lvObj(), ssid_str, ap.rssi);
-        items_.push_back(item);
+      auto item = std::make_shared<WifiListItem>(list_view_->lvObj(), ssid_str, ap.rssi);
+      items_.push_back(item);
     }
 
     ESP_LOGI(TAG, "Wi-Fi scan complete, list populated with %u entries", (unsigned)records.size());
-}
+  }
 
-
-  // void WifiListScreen::scanWifi()
-  // {
-  //   // If wifi driver isn't started yet, start it. Only call this if you haven't started wifi.
-
-  //   ESP_ERROR_CHECK(esp_wifi_start()); // call this once when you want wifi running
-
-  //   // Prepare scan config
-  //   wifi_scan_config_t scan_conf = {};
-  //   scan_conf.ssid = nullptr;
-  //   scan_conf.bssid = nullptr;
-  //   scan_conf.channel = 0;
-  //   scan_conf.show_hidden = true;
-
-  //   // Start a blocking scan (true == block until done)
-  //   ESP_ERROR_CHECK(esp_wifi_scan_start(&scan_conf, true));
-
-  //   uint16_t ap_count = 0;
-  //   ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
-  //   if (ap_count == 0)
-  //   {
-  //     ESP_LOGI(TAG, "No APs found");
-  //     return;
-  //   }
-
-  //   // Limit results to your buffer size
-  //   uint16_t max_records = std::min<uint16_t>(ap_count, DEFAULT_SCAN_LIST_SIZE);
-  //   std::vector<wifi_ap_record_t> ap_info(max_records);
-  //   memset(ap_info.data(), 0, ap_info.size() * sizeof(wifi_ap_record_t));
-
-  //   ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&max_records, ap_info.data()));
-  //   ESP_LOGI(TAG, "Total APs scanned = %u, returned = %u", ap_count, max_records);
-
-  //   for (uint16_t i = 0; i < max_records; ++i)
-  //   {
-  //     // safe conversion
-  //     size_t len = strnlen(reinterpret_cast<const char *>(ap_info[i].ssid), sizeof(ap_info[i].ssid));
-  //     std::string ssid_str(reinterpret_cast<const char *>(ap_info[i].ssid), len);
-  //     if (ssid_str.empty())
-  //     {
-  //       ssid_str = "<hidden>";
-  //     }
-
-  //     ESP_LOGI(TAG, "SSID: %s RSSI: %d", ssid_str.c_str(), ap_info[i].rssi);
-
-  //     auto item = std::make_shared<WifiListItem>(list_view_->lvObj(), ssid_str, ap_info[i].rssi);
-  //     items_.push_back(item);
-  //   }
-  //   ESP_ERROR_CHECK(esp_wifi_scan_stop());
-  // }
 };

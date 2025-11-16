@@ -1,9 +1,11 @@
-#include "display/WifiConnectScreen.h"
+#include "definitions.h"
 #include "display/DisplayManager.h"
 #include "display/FirstScreen.h"
 #include "display/ManualCalibration.h"
+#include "display/WifiConnectScreen.h"
 #include "millis.h"
 #include "ui/LvglTheme.h"
+#include "utilities/WifiHandler.h"
 #include <LGFX_ILI9488_S3.hpp>
 #include <LovyanGFX.hpp>
 #include <atomic>
@@ -17,13 +19,8 @@
 #include <memory>
 #include <nvs_flash.h>
 #include <string>
-#include "definitions.h"
 
 const char *TAG = "main";
-
-EventGroupHandle_t wifi_event_group;
-#define WIFI_CONNECTED_BIT BIT0
-#define WIFI_FAIL_BIT BIT1
 
 // --- LVGL Variables ---
 static lv_disp_draw_buf_t draw_buf;
@@ -112,37 +109,6 @@ void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
 auto manualCalibration = display::ManualCalibration::instance();
 auto firstScreen = display::FirstScreen::instance();
 
-static void wifi_event_handler(void *arg, esp_event_base_t event_base,
-                               int32_t event_id, void *event_data)
-{
-  ESP_LOGI(TAG, "WifiEventHandler: event_base=%s, event_id=%d",
-           event_base, event_id);
-  if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
-  {
-    ESP_LOGI(TAG, "WifiEventHandler: WIFI_EVENT_STA_DISCONNECTED");
-    xEventGroupSetBits(wifi_event_group, WIFI_FAIL_BIT);
-    lv_msg_send(MSG_WIFI_FAILED, NULL);
-  }
-  else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP)
-  {
-    ESP_LOGI(TAG, "WifiEventHandler: IP_EVENT_STA_GOT_IP");
-    xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
-    lv_msg_send(MSG_WIFI_CONNECTED, NULL);
-  }
-}
-
-void wifi_event_group_init()
-{
-  ESP_LOGI(TAG, "Initializing WiFi event group");
-  wifi_event_group = xEventGroupCreate();
-  ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT,
-                                             ESP_EVENT_ANY_ID,
-                                             &wifi_event_handler, NULL));
-  ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT,
-                                             IP_EVENT_STA_GOT_IP,
-                                             &wifi_event_handler, NULL));
-}
-
 void setup()
 {
   ESP_LOGI(TAG, "ES32 DCC Controller");
@@ -186,9 +152,16 @@ void setup()
   auto theme = std::make_shared<ui::LvglTheme>("Default");
   ui::LvglTheme::setActive(theme);
 
+
+
   switch (calibrated)
   {
   case display::calibrateState::calibrated:
+    xTaskCreate([](void *parameters){
+      vTaskDelay(pdMS_TO_TICKS(2000));
+      utilities::WifiHandler::instance()->init_wifi();
+      vTaskDelete(nullptr);
+    }, "wifi_init_del", 4096, nullptr, tskIDLE_PRIORITY + 1, nullptr);
     firstScreen->show(nullptr);
     break;
   case display::calibrateState::notCalibrated:
@@ -204,21 +177,6 @@ void setup()
   lastActivityTime = millis();
   ESP_LOGI(TAG, "Setup complete. UI should be visible.");
 }
-
-void init_wifi()
-{
-  ESP_LOGI(TAG, "Initializing WiFi");
-  ESP_ERROR_CHECK(esp_netif_init());
-  ESP_ERROR_CHECK(esp_event_loop_create_default());
-  esp_netif_create_default_wifi_sta();
-
-  wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-  ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-  ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-
-  wifi_event_group_init();
-}
-
 
 // Called by a periodic timer
 void lv_tick_task(void *arg)
@@ -240,13 +198,15 @@ extern "C" void app_main()
     ESP_ERROR_CHECK(ret);
   }
 
-  init_wifi();
-
   setup();
 
   const esp_timer_create_args_t lv_tick_timer_args = {
       .callback = &lv_tick_task,
-      .name = "lv_tick"};
+      .arg = nullptr,
+      .dispatch_method = ESP_TIMER_TASK,
+      .name = "lv_tick",
+      .skip_unhandled_events = false,
+  };
   esp_timer_handle_t lv_tick_timer;
   ESP_ERROR_CHECK(esp_timer_create(&lv_tick_timer_args, &lv_tick_timer));
   ESP_ERROR_CHECK(esp_timer_start_periodic(lv_tick_timer, 1000)); // 1000 µs = 1ms

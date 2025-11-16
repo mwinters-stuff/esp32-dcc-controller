@@ -2,6 +2,7 @@
 
 #define MSG_WIFI_CONNECTED 1
 #define MSG_WIFI_FAILED 2
+#define MSG_WIFI_NOT_SAVED 3
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
 

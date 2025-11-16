@@ -9,34 +9,36 @@
 namespace display
 {
 
-    class Screen : public std::enable_shared_from_this<Screen>
+  class Screen : public std::enable_shared_from_this<Screen>
+  {
+  public:
+    virtual ~Screen() = default;
+
+    virtual void show(lv_obj_t *parent = nullptr, std::weak_ptr<Screen> parentScreen = std::weak_ptr<Screen>{})
     {
-    public:
-        virtual ~Screen() = default;
+      lvObj_ = parent ? parent : lv_scr_act();
+      lv_obj_clean(lvObj_);
+      if (!parentScreen.expired())
+      {
+        parentScreen_ = parentScreen;
+      }
+    }
 
-        virtual void show(lv_obj_t *parent = nullptr, std::weak_ptr<Screen> parentScreen = std::weak_ptr<Screen>{})
-        {
-            lvObj_ = parent ? parent : lv_scr_act();
-            lv_obj_clean(lvObj_);
-            if(!parentScreen.expired()){
-                parentScreen_ = parentScreen;
-            }
-        }
+    virtual void cleanUp()
+    {
+      if (lvObj_)
+        lv_obj_clean(lvObj_);
+    }
 
-        virtual void cleanUp()
-        {
-            if (lvObj_)
-                lv_obj_clean(lvObj_);
-        }
+    virtual void showError(esp_err_t err)
+    {
+      ESP_LOGE("ERROR", "ESP Error: %s", esp_err_to_name(err));
+    }
 
-        virtual void showError(esp_err_t err)
-        {
-            ESP_LOGE("ERROR", "ESP Error: %s", esp_err_to_name(err));
-        }
+    std::weak_ptr<Screen> parentScreen_;
 
-        std::weak_ptr<Screen> parentScreen_;
-    protected:
-        lv_obj_t *lvObj_ = nullptr;
-    };
+  protected:
+    lv_obj_t *lvObj_ = nullptr;
+  };
 
 } // namespace display

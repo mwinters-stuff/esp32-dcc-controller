@@ -3,8 +3,10 @@
 LGFX DisplayManager::gfx;
 
 // --- LVGL Display Driver Callback ---
-void DisplayManager::disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p) {
-  if (gfx.getStartCount() == 0) {
+void DisplayManager::disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p)
+{
+  if (gfx.getStartCount() == 0)
+  {
     gfx.endWrite();
   }
   gfx.pushImageDMA(area->x1, area->y1, area->x2 - area->x1 + 1,

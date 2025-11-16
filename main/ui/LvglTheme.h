@@ -148,6 +148,11 @@ namespace ui
           .textColor(palette_.primary)
           .textFont(fonts_.xlarge);
 
+      defineStyle("label.muted")
+          .textColor(palette_.text)
+          .textFont(fonts_.small);
+
+
       // ---- CHECKBOX ----
       defineStyle("checkbox.main")
           .textColor(palette_.text)
@@ -172,9 +177,6 @@ namespace ui
 
       defineStyle("screen.main")
           .bgColor(palette_.background)
-          .textColor(palette_.text);
-
-      defineStyle("label.main")
           .textColor(palette_.text);
 
       defineStyle("list.main")

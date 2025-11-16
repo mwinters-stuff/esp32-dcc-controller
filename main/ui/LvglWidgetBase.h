@@ -11,6 +11,8 @@ namespace ui
   class LvglWidgetBase
   {
   public:
+    using EventCallback = std::function<void(lv_event_t *)>;
+
     explicit LvglWidgetBase(lv_obj_t *obj, std::string styleKey = "")
         : lvObj_(obj), styleKey_(std::move(styleKey))
     {
@@ -23,6 +25,7 @@ namespace ui
     virtual ~LvglWidgetBase() = default;
 
     lv_obj_t *lvObj() const { return lvObj_; }
+    operator lv_obj_t *() { return lvObj_; }
 
     // Reapply current theme (for runtime theme switching)
     virtual void applyTheme()
@@ -99,7 +102,16 @@ namespace ui
     void setVisible(bool visible)
     {
       if (lvObj_)
-        lv_obj_add_flag(lvObj_, visible ? LV_OBJ_FLAG_HIDDEN : 0);
+      {
+        if (visible)
+        {
+          lv_obj_clear_flag(lvObj_, LV_OBJ_FLAG_HIDDEN);
+        }
+        else
+        {
+          lv_obj_add_flag(lvObj_, LV_OBJ_FLAG_HIDDEN);
+        }
+      }
     }
 
     void setEnabled(bool enabled)
