@@ -2,6 +2,9 @@
 #include <memory>
 
 #include <esp_wifi.h>
+#include <mdns.h>
+#include <map>
+#include <vector>
 
 namespace utilities
 {
@@ -13,6 +16,15 @@ namespace utilities
     char password[65];
     std::shared_ptr<WifiHandler> wifiHandler;
   } wifi_credentials_t;
+
+  struct WithrottleDevice
+  {
+    std::string instance;
+    std::string hostname;
+    std::string ip;
+    uint16_t port = 0;
+    std::map<std::string, std::string> txt;
+  };
 
   class WifiHandler : public std::enable_shared_from_this<WifiHandler>
   {
@@ -50,8 +62,16 @@ namespace utilities
 
     std::string getIpAddress() const;
 
-  protected:
+    void searchMdnsWithrottle(uint32_t timeout_ms = 3000, size_t max_results = 10);
+    void handleMdnsResults(mdns_result_t *results);
+    void addWithrottleDeviceFromResult(mdns_result_t *r);
+    std::vector<WithrottleDevice> getWithrottleDevices() const;
+    void startMdnsSearchLoop(uint32_t interval_ms = 5000, uint32_t query_timeout_ms = 3000, size_t max_results = 10);
+    void stopMdnsSearchLoop();
+  private:
+    static std::vector<WithrottleDevice> withrottle_devices;
     bool connected = false;
+  protected:
 
     WifiHandler() = default;
   };

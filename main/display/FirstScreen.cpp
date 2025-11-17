@@ -1,6 +1,7 @@
 #include "FirstScreen.h"
 #include "ManualCalibration.h"
 #include "WifiListScreen.h"
+#include "ConnectDCC.h"
 #include "definitions.h"
 #include "utilities/WifiHandler.h"
 #include <esp_log.h>
@@ -70,7 +71,11 @@ namespace display
         [this](lv_event_t *e)
         {
           if (lv_event_get_code(e) == LV_EVENT_CLICKED)
+          {
             ESP_LOGI(TAG, "Connect button clicked!");
+            auto connectDCCScreen = ConnectDCCScreen::instance();
+            connectDCCScreen->show(nullptr, FirstScreen::instance());
+          }
         },
         200, 48, LV_ALIGN_CENTER, 0, -60);
     btn_connect->setStyle("button.primary");

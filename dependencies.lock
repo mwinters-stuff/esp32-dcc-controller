@@ -7,6 +7,16 @@ dependencies:
       path: .
       type: git
     version: 2e0dc974a9b6521bf155afb53a9a92a623a60803
+  espressif/mdns:
+    component_hash: 5c148bc0996305bcf111c465bba021a8155d4247b0d9353c39da9b44a91ca381
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.9.0
   idf:
     source:
       type: idf
@@ -20,8 +30,9 @@ dependencies:
     version: 8.4.0
 direct_dependencies:
 - LovyanGFX_dev
+- espressif/mdns
 - idf
 - lvgl/lvgl
-manifest_hash: 6365a94872cf8f510c22eeeb7cd79c657a5c8003bf5518d4b5ed9aa2a4fd51a2
+manifest_hash: 31d0b89b2463941a9f5845d83046f15d2c4d7731b7344f51dac53a2fa49d54b1
 target: esp32s3
 version: 2.0.0

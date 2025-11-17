@@ -6,6 +6,10 @@
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
 
+#define MSG_MDNS_DEVICE_ADDED 10
+#define MSG_MDNS_DEVICE_CHANGED 11
+
+
 
 #define NVS_NAMESPACE "touch_cal"
 #define NVS_CALIBRATION_SAVED "cal_saved"

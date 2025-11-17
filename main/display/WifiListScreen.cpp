@@ -139,7 +139,8 @@ namespace display
         self->populateList(*records);
         self->spinner_->hideSpinner();
         delete records;
-        delete ctx; }, new std::pair<WifiListScreen *, std::vector<wifi_ap_record_t> *>(this, results));
+        delete ctx; 
+      }, new std::pair<WifiListScreen *, std::vector<wifi_ap_record_t> *>(this, results));
 
     ESP_ERROR_CHECK(esp_wifi_scan_stop());
   }
