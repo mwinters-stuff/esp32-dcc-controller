@@ -189,6 +189,7 @@ namespace ui
           .borderColor(lv_color_hex(0xD0D0D0))
           .borderWidth(1)
           .padAll(6);
+          
     }
 
     std::string name_;

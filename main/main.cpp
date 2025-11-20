@@ -162,15 +162,15 @@ void setup()
       utilities::WifiHandler::instance()->init_wifi();
       vTaskDelete(nullptr);
     }, "wifi_init_del", 4096, nullptr, tskIDLE_PRIORITY + 1, nullptr);
-    firstScreen->show(nullptr);
+    firstScreen->showScreen();
     break;
   case display::calibrateState::notCalibrated:
   case display::calibrateState::showScreen:
-    manualCalibration->show(nullptr);
+    manualCalibration->showScreen();
     break;
   default:
     ESP_LOGI(TAG, "Calibrated is not correct.");
-    manualCalibration->show(nullptr);
+    manualCalibration->showScreen();
     break;
   }
 

@@ -3,6 +3,7 @@ file(GLOB_RECURSE SOURCE_FILES
   "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/display/*.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/utilities/*.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/ui/*.cpp"
 )
 
 idf_component_register(

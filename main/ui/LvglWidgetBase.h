@@ -4,6 +4,7 @@
 #include "LvglTheme.h"
 #include <lvgl.h>
 #include <string>
+#include <functional>
 
 namespace ui
 {

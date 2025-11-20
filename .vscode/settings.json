@@ -98,5 +98,6 @@
   "files.autoSave": "afterDelay",
   "idf.notificationMode": "Silent",
   "editor.tabSize": 2,
-  "editor.detectIndentation": false
+  "editor.detectIndentation": false,
+  "editor.formatOnSave": true
 }

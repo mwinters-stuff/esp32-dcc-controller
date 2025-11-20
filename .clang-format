@@ -1,0 +1,14 @@
+BasedOnStyle: LLVM
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+BraceWrapping:
+  AfterFunction: true
+  AfterClass: true
+  AfterEnum: true
+  AfterStruct: true
+  AfterUnion: true
+  BeforeLambdaBody: true
+  AfterControlStatement: true
+AllowShortLambdasOnASingleLine: false
+ColumnLimit: 120

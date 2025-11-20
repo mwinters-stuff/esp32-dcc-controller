@@ -13,47 +13,45 @@
 #include "ui/LvglSpinner.h"
 #include "ui/LvglTheme.h"
 
-namespace display
-{
-  using namespace ui;
+namespace display {
+using namespace ui;
 
-  class WifiListScreen : public Screen, public std::enable_shared_from_this<WifiListScreen>
-  {
-  public:
-    static std::shared_ptr<WifiListScreen> instance()
-    {
-      static std::shared_ptr<WifiListScreen> s;
-      if (!s)
-        s.reset(new WifiListScreen());
-      return s;
-    }
-    ~WifiListScreen() override = default;
+class WifiListScreen : public Screen, public std::enable_shared_from_this<WifiListScreen> {
+public:
+  static std::shared_ptr<WifiListScreen> instance() {
+    static std::shared_ptr<WifiListScreen> s;
+    if (!s)
+      s.reset(new WifiListScreen());
+    return s;
+  }
+  ~WifiListScreen() override = default;
 
-    void show(lv_obj_t *parent = nullptr, std::weak_ptr<Screen> parentScreen = std::weak_ptr<Screen>{}) override;
-    void cleanUp() override;
+  void show(lv_obj_t *parent = nullptr, std::weak_ptr<Screen> parentScreen = std::weak_ptr<Screen>{}) override;
+  void cleanUp() override;
 
-    // Optionally return the list object to load screen
-    lv_obj_t *listObj() const { return list_view_->lvObj(); }
-    lv_obj_t *titleObj() const { return lbl_title_->lvObj(); }
+  // Optionally return the list object to load screen
+  lv_obj_t *listObj() const { return list_view_->lvObj(); }
+  lv_obj_t *titleObj() const { return lbl_title_->lvObj(); }
 
-    WifiListScreen(const WifiListScreen &) = delete;
-    WifiListScreen &operator=(const WifiListScreen &) = delete;
+  WifiListScreen(const WifiListScreen &) = delete;
+  WifiListScreen &operator=(const WifiListScreen &) = delete;
 
-    void scanWifi();
+protected:
+  WifiListScreen() = default;
 
-  protected:
-    WifiListScreen() = default;
-
-  private:
-    lv_obj_t *_lv_obj = nullptr;
-    std::unique_ptr<LvglLabel> lbl_title_;
-    std::unique_ptr<LvglButton> btn_back_;
-    std::unique_ptr<LvglButton> btn_connect_;
-    std::unique_ptr<LvglListView> list_view_;
-    std::vector<std::shared_ptr<WifiListItem>> items_;
-    std::unique_ptr<LvglSpinner> spinner_;
-    void scanWifiTask();
-    void populateList(const std::vector<wifi_ap_record_t> &records);
-  };
+private:
+  TaskHandle_t scanTaskHandle = 0;
+  lv_obj_t *_lv_obj = nullptr;
+  std::unique_ptr<LvglLabel> lbl_title_;
+  std::unique_ptr<LvglButton> btn_back_;
+  std::unique_ptr<LvglButton> btn_connect_;
+  std::unique_ptr<LvglListView> list_view_;
+  std::vector<std::shared_ptr<WifiListItem>> items_;
+  std::unique_ptr<LvglSpinner> spinner_;
+  void scanWifiTask();
+  void populateList(const std::vector<wifi_ap_record_t> &records);
+  void disableButtons();
+  void enableButtons();
+};
 
 } // namespace display
