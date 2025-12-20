@@ -22,3 +22,8 @@ dependencies:
     # version: "1.2.7"
     version: develop
     # version: "commit_hash"
+  DCCEXProtocol:
+    # path: ../../DCCEXProtocol
+    git: https://github.com/mwinters-stuff/DCCEXProtocol.git
+    version: main
+

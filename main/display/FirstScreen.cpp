@@ -2,6 +2,7 @@
 #include "ConnectDCC.h"
 #include "ManualCalibration.h"
 #include "WifiListScreen.h"
+#include "WaitingScreen.h"
 #include "definitions.h"
 #include "utilities/WifiHandler.h"
 #include <esp_log.h>

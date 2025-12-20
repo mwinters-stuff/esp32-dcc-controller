@@ -20,7 +20,7 @@
 #include <nvs_flash.h>
 #include <string>
 
-const char *TAG = "main";
+static const char *TAG = "main";
 
 // --- LVGL Variables ---
 static lv_disp_draw_buf_t draw_buf;

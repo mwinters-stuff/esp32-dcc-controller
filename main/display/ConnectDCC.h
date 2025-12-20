@@ -11,11 +11,20 @@
 namespace display {
 class ConnectDCCScreen : public Screen, public std::enable_shared_from_this<ConnectDCCScreen> {
 public:
-  static std::shared_ptr<ConnectDCCScreen> instance();
+  static std::shared_ptr<ConnectDCCScreen> instance() {
+    static std::shared_ptr<ConnectDCCScreen> s;
+    if (!s)
+      s.reset(new ConnectDCCScreen());
+    return s;
+  }
+  ConnectDCCScreen(const ConnectDCCScreen &) = delete;
+  ConnectDCCScreen &operator=(const ConnectDCCScreen &) = delete;
   ~ConnectDCCScreen() override = default;
 
   void show(lv_obj_t *parent = nullptr, std::weak_ptr<Screen> parentScreen = std::weak_ptr<Screen>{}) override;
   void cleanUp() override;
+
+  void connectToDCCServer(std::shared_ptr<DCCConnectListItem> dccItem);
 
   void refreshMdnsList();
   void refreshSavedList();
@@ -35,5 +44,8 @@ private:
   std::unique_ptr<ui::LvglButton> btn_back_;
   std::unique_ptr<ui::LvglButton> btn_save_;
   std::unique_ptr<ui::LvglButton> btn_connect_;
+protected:
+  ConnectDCCScreen() = default;
+
 };
 } // namespace display

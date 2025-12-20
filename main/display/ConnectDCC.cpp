@@ -1,5 +1,7 @@
 #include "ConnectDCC.h"
 #include "Screen.h"
+#include "WaitingScreen.h"
+#include "connection/wifi_control.h"
 #include "definitions.h"
 #include "ui/LvglButton.h"
 #include "ui/LvglLabel.h"
@@ -7,18 +9,13 @@
 #include "ui/LvglListView.h"
 #include "ui/LvglTabView.h"
 #include "utilities/WifiHandler.h"
+#include "DCCMenu.h"
 #include <memory>
 #include <vector>
 
 namespace display {
 
-const char *TAG = "DCC_CONNECT_SCREEN";
-std::shared_ptr<ConnectDCCScreen> ConnectDCCScreen::instance() {
-  static std::shared_ptr<ConnectDCCScreen> s;
-  if (!s)
-    s.reset(new ConnectDCCScreen());
-  return s;
-}
+static const char *TAG = "DCC_CONNECT_SCREEN";
 
 void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   ui::LvglListItem::resetItems();
@@ -45,13 +42,11 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
   lv_obj_set_style_pad_all(tab_saved_, 0, LV_PART_MAIN); // Remove all padding
 
   // List for Auto Detect
-  list_auto_ =
-      std::make_unique<ui::LvglListView>(tab_auto_, 0, 0, LV_PCT(100), tabview_height - lv_obj_get_height(tab_auto_));
+  list_auto_ = std::make_unique<ui::LvglListView>(tab_auto_, 0, 0, LV_PCT(100), lv_obj_get_height(tab_auto_));
   // TODO: Populate list_auto_ with mDNS discovered _withrottle devices
 
   // List for Saved
-  list_saved_ =
-      std::make_unique<ui::LvglListView>(tab_saved_, 0, 0, LV_PCT(100), tabview_height - lv_obj_get_height(tab_auto_));
+  list_saved_ = std::make_unique<ui::LvglListView>(tab_saved_, 0, 0, LV_PCT(100), lv_obj_get_height(tab_auto_));
   // TODO: Populate list_saved_ with saved DCC connections
 
   // Bottom Buttons
@@ -72,7 +67,7 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
       if (ui::LvglListItem::currentItem) {
         auto dccItem = std::dynamic_pointer_cast<display::DCCConnectListItem>(ui::LvglListItem::currentItem);
         if (dccItem) {
-          ESP_LOGI(TAG, "Connect button pressed on %s", dccItem->getText().c_str());
+          ESP_LOGI(TAG, "Save button pressed on %s", dccItem->getText().c_str());
           // handle save action.
           auto savedListItem =
               std::make_shared<DCCConnectListItem>(list_saved_->lvObj(), savedListItems.size(), dccItem->device());
@@ -90,6 +85,9 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
       resetMsgHandlers();
       // TODO: Connect to selected DCC connection
+      if (auto dccItem = std::dynamic_pointer_cast<display::DCCConnectListItem>(ui::LvglListItem::currentItem)) {
+        connectToDCCServer(dccItem);
+      }
     }
   });
   btn_connect_->setStyle("button.primary");
@@ -170,4 +168,64 @@ void ConnectDCCScreen::cleanUp() {
   // btn_save_.reset();
   // btn_connect_.reset();
 }
+
+void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dccItem) {
+  if (!dccItem) {
+    ESP_LOGW(TAG, "No DCC item selected for connection");
+    return;
+  }
+
+  ESP_LOGI(TAG, "Connecting to DCC server at %s:%d", dccItem->device().ip.c_str(), dccItem->device().port);
+
+  auto dccDevice = dccItem->device();
+  auto wifiHandler = utilities::WifiHandler::instance();
+  auto wifiControl = WifiControl::instance();
+
+  auto waitingScreen = WaitingScreen::instance();
+  waitingScreen->setLabel("Connecting to:");
+  waitingScreen->setSubLabel(dccItem->device().hostname);
+  waitingScreen->showScreen(shared_from_this());
+
+  lv_msg_send(MSG_CONNECTING_TO_DCC_SERVER, nullptr);
+  wifiControl->startConnectToServer(dccDevice.ip.c_str(), dccDevice.port);
+
+  // Create a FreeRTOS task to wait for connection on core 0
+  struct ConnectTaskArgs {
+    std::shared_ptr<utilities::WifiHandler> wifiHandler;
+    std::shared_ptr<WifiControl> wifiControl;
+    std::string ip;
+    int port;
+    std::string instance;
+  };
+  auto *args = new ConnectTaskArgs{wifiHandler, wifiControl, dccDevice.ip, dccDevice.port, dccDevice.instance};
+
+  auto connect_wait_task = [](void *arg) {
+    auto *args = static_cast<ConnectTaskArgs *>(arg);
+    WifiControl::connection_state currentConnectionState = WifiControl::NOT_CONNECTED;
+
+    do {
+      vTaskDelay(pdMS_TO_TICKS(50));
+      currentConnectionState = args->wifiControl->connectionState();
+    } while (currentConnectionState == WifiControl::CONNECTING);
+
+    if (currentConnectionState == WifiControl::CONNECTED) {
+      args->wifiHandler->stopMdnsSearchLoop();
+      lv_msg_send(MSG_DCC_CONNECTION_SUCCESS, nullptr);
+      auto DCCMenuScreen = DCCMenu::instance();
+      DCCMenuScreen->setConnectedServer(args->ip, args->port, args->instance);
+      DCCMenuScreen->showScreen(WaitingScreen::instance());
+      ESP_LOGI(TAG, "Successfully connected to DCC server at %s:%d", args->ip.c_str(), args->port);
+    } else {
+      lv_msg_send(MSG_DCC_CONNECTION_FAILED, nullptr);
+      ESP_LOGI(TAG, "Failed to connect to DCC server at %s:%d", args->ip.c_str(), args->port);
+    }
+    delete args;
+    vTaskDelete(nullptr);
+  };
+
+  xTaskCreatePinnedToCore(connect_wait_task, "connect_wait_task", 4096, args, 5, nullptr,
+                          0 // Core 0
+  );
+}
+
 } // namespace display

@@ -1,4 +1,17 @@
 dependencies:
+  DCCEXProtocol:
+    component_hash: 2f156cf5fc2da61ca304a2b507a42aa7de8c1b30c3d693979d8f54b26cc20022
+    dependencies: []
+    source:
+      git: https://github.com/mwinters-stuff/DCCEXProtocol.git
+      path: .
+      type: git
+    targets:
+    - esp32
+    - esp32s2
+    - esp32s3
+    - esp32c3
+    version: 9758f1b4c604f96ec4124e7e331795c293572883
   LovyanGFX_dev:
     component_hash: 0de4f2fe296403116df4f27fcc0e27efa1d1cca7346d0258f6abfaee2d054864
     dependencies: []
@@ -29,10 +42,11 @@ dependencies:
       type: service
     version: 8.4.0
 direct_dependencies:
+- DCCEXProtocol
 - LovyanGFX_dev
 - espressif/mdns
 - idf
 - lvgl/lvgl
-manifest_hash: 31d0b89b2463941a9f5845d83046f15d2c4d7731b7344f51dac53a2fa49d54b1
+manifest_hash: 9b727d368b4be3fc3465e170d98652874cfb411c03da1a82de9c628898360fde
 target: esp32s3
 version: 2.0.0
