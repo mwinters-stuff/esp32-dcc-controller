@@ -26,22 +26,35 @@ public:
   calibrateState loadCalibrationFromNVS();
   virtual void cleanUp() override;
   void calibrate();
-  void addBackButton(std::weak_ptr<Screen> screenToShow);
 
   // non-copyable, non-movable
   ManualCalibration(const ManualCalibration &) = delete;
   ManualCalibration &operator=(const ManualCalibration &) = delete;
-
   ManualCalibration &operator=(ManualCalibration &&) = delete;
+
+  void button_start_event_callback(lv_event_t *e);
+  void button_back_event_callback(lv_event_t *e);
 
 protected:
   ManualCalibration() {}; // protected ctor
 
+  static void event_start_trampoline(lv_event_t *e) {
+    auto *self = static_cast<ManualCalibration *>(lv_event_get_user_data(e));
+    if (self)
+      self->button_start_event_callback(e);
+  }
+
+  static void event_back_trampoline(lv_event_t *e) {
+    auto *self = static_cast<ManualCalibration *>(lv_event_get_user_data(e));
+    if (self)
+      self->button_back_event_callback(e);
+  }
+
 private:
-  std::shared_ptr<ui::LvglLabel> lbl_title;
-  std::shared_ptr<ui::LvglLabel> lbl_sub_title;
-  std::shared_ptr<ui::LvglButton> btn_start;
-  std::shared_ptr<ui::LvglButton> btn_back;
+  lv_obj_t *lbl_title;
+  lv_obj_t *lbl_sub_title;
+  lv_obj_t *btn_start;
+  lv_obj_t *btn_back;
 
   uint16_t parameters[8];
 

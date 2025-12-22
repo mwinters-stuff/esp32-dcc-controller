@@ -1,5 +1,6 @@
 #include "ManualCalibration.h"
 #include "DisplayManager.h"
+#include "LvglWrapper.h"
 #include "definitions.h"
 #include <array>
 #include <cmath>
@@ -16,47 +17,20 @@ static const char *TAG = "MANUAL_CALIBRATION";
 
 void ManualCalibration::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
 
-  lbl_title = std::make_shared<ui::LvglLabel>(lvObj_, "Calibrate Screen", LV_ALIGN_TOP_MID, 0, 20);
-  lbl_title->setStyle("label.title");
+  lbl_title = makeLabel(lvObj_, "Calibrate Screen", LV_ALIGN_TOP_MID, 0, 20, "label.title", &lv_font_montserrat_30);
 
-  lbl_sub_title = std::make_shared<ui::LvglLabel>(lvObj_, "Touch corners to calibrate", LV_ALIGN_CENTER, 0, 0);
-  lbl_sub_title->setStyle("label.main");
+  lbl_sub_title = makeLabel(lvObj_, "Touch corners to calibrate", LV_ALIGN_CENTER, 0, 0, "label.main");
 
-  btn_start = std::make_shared<ui::LvglButton>(
-      lvObj_, "Start Calibration",
-      [this](lv_event_t *e) {
-        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-          LV_LOG_USER("Start Calibration");
-
-          rebootToCalibrate();
-        }
-      },
-      200, 48, LV_ALIGN_BOTTOM_MID, 0, -80);
-  btn_start->setStyle("button.primary");
+  btn_start = makeButton(lvObj_, "Start Calibration", 200, 48, LV_ALIGN_BOTTOM_MID, 0, -80, "button.primary");
+  lv_obj_add_event_cb(btn_start, &ManualCalibration::event_start_trampoline, LV_EVENT_ALL, this);
 
   if (parentScreen_.expired() == false) {
-    btn_back = std::make_shared<ui::LvglButton>(
-        lvObj_, "Back",
-        [this](lv_event_t *e) {
-          if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-            LV_LOG_USER("Back button clicked");
-            if (auto screen = parentScreen_.lock()) {
-              screen->showScreen();
-            }
-          }
-        },
-        200, 48, LV_ALIGN_BOTTOM_MID, 0, -20);
-    btn_back->setStyle("button.secondary");
+    btn_back = makeButton(lvObj_, "Back", 200, 48, LV_ALIGN_BOTTOM_MID, 0, -20, "button.secondary");
+    lv_obj_add_event_cb(btn_back, &ManualCalibration::event_back_trampoline, LV_EVENT_ALL, this);
   }
 }
 
-void ManualCalibration::cleanUp() {
-  // lbl_title.reset();
-  // lbl_sub_title.reset();
-  // btn_start.reset();
-  // btn_back.reset();
-  // Screen::cleanUp();
-}
+void ManualCalibration::cleanUp() { lv_obj_clean(lvObj_); }
 
 void ManualCalibration::rebootToCalibrate() {
   esp_err_t err;
@@ -163,6 +137,22 @@ void ManualCalibration::calibrate() {
   DisplayManager::gfx.calibrateTouch(parameters, TFT_WHITE, TFT_BLACK, 15);
   save_to_nvs(calibrated);
   esp_restart();
+}
+
+void ManualCalibration::button_start_event_callback(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    LV_LOG_USER("Start Calibration");
+    rebootToCalibrate();
+  }
+}
+
+void ManualCalibration::button_back_event_callback(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    LV_LOG_USER("Back button clicked");
+    if (auto screen = parentScreen_.lock()) {
+      screen->showScreen();
+    }
+  }
 }
 
 } // namespace display
