@@ -185,10 +185,14 @@ namespace ui
           .padAll(6);
 
       defineStyle("wifi.item")
-          .bgColor(lv_color_hex(0xF0F0F0))
-          .borderColor(lv_color_hex(0xD0D0D0))
-          .borderWidth(1)
-          .padAll(6);
+          .bgColor(palette_.background);
+          // .borderColor(lv_color_hex(0xD0D0D0));
+          // .borderWidth(1)
+          // .padAll(6);
+      defineStyle("wifi.item.selected")
+          .bgColor(lv_color_hex(0x3399FF))
+          .bgOpacity(LV_OPA_50)
+          .textColor(lv_color_white());
           
     }
 

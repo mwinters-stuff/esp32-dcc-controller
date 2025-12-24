@@ -1,30 +1,32 @@
 #pragma once
-#include "ui/LvglListItem.h"
-#include "ui/LvglStyle.h"
-#include "ui/LvglTheme.h"
 #include <esp_log.h>
 #include <functional>
 #include <lvgl.h>
 #include <memory>
 #include <string>
-
+#include "LvglWrapper.h"
 namespace display {
 
-class WifiListItem : public ui::LvglListItem {
+class WifiListItem {
 public:
-  static std::shared_ptr<WifiListItem> currentWifiItem;
+  lv_obj_t *parentObj;
+  size_t index;
 
-  WifiListItem(lv_obj_t *parent, size_t index, std::string ssid, int8_t rssi)
-      : ui::LvglListItem(parent, index, LV_SYMBOL_WIFI, (ssid + " (" + std::to_string(rssi) + "dBm)").c_str()),
-        ssid_(std::move(ssid)), rssi_(rssi) {}
+  WifiListItem(lv_obj_t *parent, size_t index, std::string ssid, int8_t rssi): parentObj(parent), index(index), ssid(std::move(ssid)), rssi(rssi){
+    lvObj = lv_list_add_btn(parent, LV_SYMBOL_WIFI, (this->ssid + " (" + std::to_string(this->rssi) + "dBm)").c_str());
+    lv_obj_add_flag(lvObj, LV_OBJ_FLAG_EVENT_BUBBLE);
+    setStylePart(lvObj, "wifi.item", LV_PART_MAIN);
+    setStylePart(lvObj, "wifi.item.selected", LV_STATE_CHECKED);
+  }
 
   // update RSSI and icon
-  void setSignalStrength(int rssi) { rssi_ = rssi; }
-
-  const std::string &ssid() const { return ssid_; }
-
+  void setSignalStrength(int rssi) { this->rssi = rssi; }
+  lv_obj_t* getLvObj() const { return lvObj; }
+  std::string getSsid() const { return ssid; }
+ 
 private:
-  std::string ssid_;
-  int8_t rssi_ = -100;
+  lv_obj_t *lvObj;
+  std::string ssid;
+  int8_t rssi = -100;
 };
 } // namespace display

@@ -1,5 +1,7 @@
 #include "WifiListScreen.h"
+#include "LvglWrapper.h"
 #include "WifiConnectScreen.h"
+#include "WifiListItem.h"
 #include "definitions.h"
 #include <esp_event.h>
 #include <esp_log.h>
@@ -12,8 +14,6 @@ namespace display {
 static const char *TAG = "WIFI_LIST_SCREEN";
 
 void WifiListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
-  ui::LvglListItem::resetItems();
-
   utilities::WifiHandler::instance()->stopMdnsSearchLoop();
 
   // Full-screen container
@@ -21,50 +21,24 @@ void WifiListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) 
   lv_obj_clear_flag(lvObj_, LV_OBJ_FLAG_SCROLLABLE);
 
   // Title label at top
-  lbl_title_ = std::make_unique<LvglLabel>(lvObj_, "WiFi List", LV_ALIGN_TOP_MID, 0, 8);
-  lbl_title_->setStyle("label.title");
+  lbl_title = makeLabel(lvObj_, "WiFi List", LV_ALIGN_TOP_MID, 0, 8, "label.title");
 
-  btn_back_ = std::make_unique<LvglButton>(lvObj_, "Back", [this](lv_event_t *e) {
-    // Handle back action
-    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-      ESP_LOGI("WIFI_LIST_SCREEN", "Back button pressed");
-      if (auto screen = parentScreen_.lock()) {
-        screen->showScreen();
-      }
-    }
-  });
-  btn_back_->setStyle("button.secondary");
-  btn_back_->setAlignment(LV_ALIGN_BOTTOM_LEFT, 8, -12);
-  btn_back_->setSize(100, 40);
+  btn_back = makeButton(lvObj_, "Back", 100, 40, LV_ALIGN_BOTTOM_LEFT, 8, -12, "button.secondary");
+  lv_obj_add_event_cb(btn_back, event_back_trampoline, LV_EVENT_CLICKED, this);
 
-  btn_connect_ = std::make_unique<LvglButton>(lvObj_, "Connect", [this](lv_event_t *e) {
-    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-      ESP_LOGI("WIFI_LIST_SCREEN", "Connect button pressed");
-      auto instance = WifiConnectScreen::instance();
-      if (instance && ui::LvglListItem::currentItem) {
-        auto wifiItem = std::dynamic_pointer_cast<display::WifiListItem>(ui::LvglListItem::currentItem);
-        if (wifiItem) {
-          // Now you can access WifiListItem-specific methods
-          instance->setSSID(wifiItem->ssid());
-          instance->showScreen(WifiListScreen::instance());
-        }
-      }
-    }
-    // Handle connect action
-  });
-  btn_connect_->setStyle("button.primary");
-  btn_connect_->setAlignment(LV_ALIGN_BOTTOM_RIGHT, -8, -12);
-  btn_connect_->setSize(100, 40);
+  btn_connect = makeButton(lvObj_, "Connect", 100, 40, LV_ALIGN_BOTTOM_RIGHT, -8, -12, "button.primary");
+  lv_obj_add_event_cb(btn_connect, event_connect_trampoline, LV_EVENT_CLICKED, this);
 
   // List view below
-  list_view_ = std::make_unique<LvglListView>(lvObj_, 0, 40, 320, 380);
+  list_view = makeListView(lvObj_, 0, 40, 320, 380);
+  lv_obj_add_event_cb(list_view, event_listitem_click_trampoline, LV_EVENT_CLICKED, this);
 
   ESP_LOGI("WIFI_LIST_SCREEN", "WifiListScreen shown");
 
-  items_.clear();
+  items.clear();
 
   // Create spinner overlay (centered)
-  spinner_ = std::make_unique<LvglSpinner>(lvObj_);
+  spinner = makeSpinner(lvObj_, 0, 0, 50);
 
   disableButtons();
 
@@ -86,13 +60,7 @@ void WifiListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) 
 
 void WifiListScreen::cleanUp() {
   ESP_LOGI(TAG, "WifiListScreen cleaned up");
-  // lbl_title_.reset();
-  // list_view_.reset();
-  // items_.clear();
-  // btn_back_.reset();
-  // btn_connect_.reset();
-  // spinner_.reset();
-  // Screen::cleanUp();
+  lv_obj_clean(lvObj_);
 }
 
 void WifiListScreen::scanWifiTask() {
@@ -113,10 +81,9 @@ void WifiListScreen::scanWifiTask() {
     ESP_LOGI(TAG, "No APs found");
     lv_async_call(
         [](void *data) {
-          auto self = static_cast<WifiListScreen *>(data);
-          self->spinner_->hideSpinner();
+          lv_obj_add_flag((lv_obj_t *)data, LV_OBJ_FLAG_HIDDEN);
         },
-        this);
+        spinner);
     return;
   }
 
@@ -134,7 +101,7 @@ void WifiListScreen::scanWifiTask() {
         auto *self = ctx->first;
         auto *records = ctx->second;
         self->populateList(*records);
-        self->spinner_->hideSpinner();
+        lv_obj_add_flag(self->spinner, LV_OBJ_FLAG_HIDDEN);
         self->enableButtons();
         delete records;
         delete ctx;
@@ -150,9 +117,10 @@ void WifiListScreen::populateList(const std::vector<wifi_ap_record_t> &records) 
                          strnlen(reinterpret_cast<const char *>(ap.ssid), sizeof(ap.ssid)));
     if (ssid_str.empty())
       ssid_str = "<hidden>";
+    ESP_LOGI(TAG, "Found AP: SSID='%s', RSSI=%d", ssid_str.c_str(), ap.rssi);
 
-    auto item = std::make_shared<WifiListItem>(list_view_->lvObj(), items_.size(), ssid_str, ap.rssi);
-    items_.push_back(item);
+    auto item = std::make_shared<WifiListItem>(list_view, items.size(), ssid_str, ap.rssi);
+    items.push_back(item);
   }
 
   ESP_LOGI(TAG, "Wi-Fi scan complete, list populated with %u entries", (unsigned)records.size());
@@ -160,14 +128,86 @@ void WifiListScreen::populateList(const std::vector<wifi_ap_record_t> &records) 
 
 void WifiListScreen::disableButtons() {
   ESP_LOGI(TAG, "DisableButtons");
-  btn_connect_->setEnabled(false);
-  btn_back_->setEnabled(false);
+  lv_obj_add_state(btn_connect, LV_STATE_DISABLED);
+  lv_obj_add_state(btn_back, LV_STATE_DISABLED);
 }
 
 void WifiListScreen::enableButtons() {
   ESP_LOGI(TAG, "EnableButtons");
-  btn_connect_->setEnabled(true);
-  btn_back_->setEnabled(true);
+  lv_obj_clear_state(btn_back, LV_STATE_DISABLED);
 }
 
-}; // namespace display
+void WifiListScreen::button_connect_event_callback(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    ESP_LOGI("WIFI_LIST_SCREEN", "Connect button pressed");
+    auto instance = WifiConnectScreen::instance();
+    auto currentItem = getCurrentCheckedItem(currentButton);
+    if (currentItem) {
+      // Now you can access WifiListItem-specific methods
+      instance->setSSID(currentItem->getSsid());
+      instance->showScreen(WifiListScreen::instance());
+    }
+  }
+}
+
+std::shared_ptr<WifiListItem> WifiListScreen::getCurrentCheckedItem(lv_obj_t *bn) {
+    for (const auto &item : items) {
+        if (item->getLvObj() == bn) {
+            return item;
+        }
+    }
+    return nullptr;
+}
+
+void WifiListScreen::button_back_event_callback(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    ESP_LOGI("WIFI_LIST_SCREEN", "Back button pressed");
+    if (auto screen = parentScreen_.lock()) {
+      screen->showScreen();
+    }
+  }
+}
+
+void WifiListScreen::button_listitem_click_event_callback(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    ESP_LOGI("WIFI_LIST_SCREEN", "List item clicked");
+
+    lv_obj_add_state(btn_connect, LV_STATE_DISABLED);
+    // You can handle the list item click event here if needed
+    lv_obj_t *target = lv_event_get_target(e);
+    /*The current target is always the container as the event is added to it*/
+    lv_obj_t *cont = lv_event_get_current_target(e);
+
+    /*If container was clicked do nothing*/
+    if (target == cont){
+      ESP_LOGI("WIFI_LIST_SCREEN", "Clicked on container, ignoring");
+      return;
+    }
+      
+
+    // void * event_data = lv_event_get_user_data(e);
+    ESP_LOGI("WIFI_LIST_SCREEN", "Clicked: %s", lv_list_get_btn_text(list_view, target));
+
+    if(currentButton == target) {
+        currentButton = NULL;
+    }
+    else {
+        currentButton = target;
+    }
+    lv_obj_t * parent = lv_obj_get_parent(target);
+    uint32_t i;
+    for(i = 0; i < lv_obj_get_child_cnt(parent); i++) {
+        lv_obj_t * child = lv_obj_get_child(parent, i);
+        if(child == currentButton) {
+            ESP_LOGI("WIFI_LIST_SCREEN", "Setting CHECKED state on %s", lv_list_get_btn_text(list_view, child));
+            lv_obj_add_state(child, LV_STATE_CHECKED);
+            lv_obj_clear_state(btn_connect, LV_STATE_DISABLED);
+        } else {
+            ESP_LOGI("WIFI_LIST_SCREEN", "Clearing CHECKED state on %s", lv_list_get_btn_text(list_view, child));
+            lv_obj_clear_state(child, LV_STATE_CHECKED);
+        }
+    }
+  }
+}
+
+} // namespace display

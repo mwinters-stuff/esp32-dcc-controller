@@ -3,10 +3,6 @@
 #include <memory>
 
 #include "DCCConnectListItem.h"
-#include "ui/LvglButton.h"
-#include "ui/LvglLabel.h"
-#include "ui/LvglListView.h"
-#include "ui/LvglTabView.h"
 
 namespace display {
 class ConnectDCCScreen : public Screen, public std::enable_shared_from_this<ConnectDCCScreen> {
@@ -29,23 +25,58 @@ public:
   void refreshMdnsList();
   void refreshSavedList();
   void resetMsgHandlers();
-
+  std::shared_ptr<DCCConnectListItem> getItem(lv_obj_t *bn);
+  
+    void button_connect_callback(lv_event_t *e);
+  void button_save_callback(lv_event_t *e);
+  void button_back_callback(lv_event_t *e);
+  void button_listitem_click_event_callback(lv_event_t *e);
 private:
   std::vector<std::shared_ptr<DCCConnectListItem>> detectedListItems;
-  std::vector<std::shared_ptr<DCCConnectListItem>> savedListItems;
+  std::shared_ptr<DCCConnectListItem> savedListItem;
+  
 
-  void *mdns_added_sub_ = nullptr;
-  void *mdns_changed_sub_ = nullptr;
+  void *mdns_added_sub = nullptr;
+  void *mdns_changed_sub = nullptr;
 
-  std::unique_ptr<ui::LvglLabel> lbl_title_;
-  std::unique_ptr<ui::LvglTabView> tab_view_;
-  std::unique_ptr<ui::LvglListView> list_auto_;
-  std::unique_ptr<ui::LvglListView> list_saved_;
-  std::unique_ptr<ui::LvglButton> btn_back_;
-  std::unique_ptr<ui::LvglButton> btn_save_;
-  std::unique_ptr<ui::LvglButton> btn_connect_;
+  lv_obj_t *lbl_title;
+  // lv_obj_t *tab_view;
+  lv_obj_t *list_auto;
+  // lv_obj_t *list_saved;
+  lv_obj_t *btn_back;
+  lv_obj_t *btn_save;
+  lv_obj_t *btn_connect;
+  lv_obj_t *currentButton = nullptr;
+
+
 protected:
   ConnectDCCScreen() = default;
+
+  static void event_connect_trampoline(lv_event_t *e) {
+    auto *self = static_cast<ConnectDCCScreen *>(lv_event_get_user_data(e));
+    if (self)
+      self->button_connect_callback(e);
+  }
+
+  static void event_save_trampoline(lv_event_t *e) {
+    auto *self = static_cast<ConnectDCCScreen *>(lv_event_get_user_data(e));
+    if (self)
+      self->button_save_callback(e);
+  }
+
+  static void event_back_trampoline(lv_event_t *e) {
+    auto *self = static_cast<ConnectDCCScreen *>(lv_event_get_user_data(e));
+    if (self)
+      self->button_back_callback(e);
+  }
+
+
+  static void event_listitem_click_trampoline(lv_event_t *e) {
+    auto *self = static_cast<ConnectDCCScreen *>(lv_event_get_user_data(e));
+    if (self)
+      self->button_listitem_click_event_callback(e);
+  }
+
 
 };
 } // namespace display

@@ -1,15 +1,11 @@
 #include "ConnectDCC.h"
+#include "DCCMenu.h"
+#include "LvglWrapper.h"
 #include "Screen.h"
 #include "WaitingScreen.h"
 #include "connection/wifi_control.h"
 #include "definitions.h"
-#include "ui/LvglButton.h"
-#include "ui/LvglLabel.h"
-#include "ui/LvglListItem.h"
-#include "ui/LvglListView.h"
-#include "ui/LvglTabView.h"
 #include "utilities/WifiHandler.h"
-#include "DCCMenu.h"
 #include <memory>
 #include <vector>
 
@@ -18,90 +14,51 @@ namespace display {
 static const char *TAG = "DCC_CONNECT_SCREEN";
 
 void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
-  ui::LvglListItem::resetItems();
 
   detectedListItems.clear();
-  savedListItems.clear();
+  currentButton = nullptr;
+  savedListItem = nullptr;
 
   // Title
-  lbl_title_ = std::make_unique<ui::LvglLabel>(lvObj_, "Connect DCC", LV_ALIGN_TOP_MID, 0, 8);
-  lbl_title_->setStyle("label.title");
+  lbl_title = makeLabel(lvObj_, "Connect DCC", LV_ALIGN_TOP_MID, 0, 8, "label.title", &lv_font_montserrat_30);
 
-  // Calculate tabview position and size
-  int title_height = 40;                                            // Adjust if your title uses a different height
-  int button_height = 52;                                           // Button height + margin
-  int tabview_y = title_height + 8;                                 // 8px offset from top
-  int tabview_height = LV_VER_RES - tabview_y - button_height - 16; // 16px for bottom margin
+  // // Calculate tabview position and size
+  // int title_height = 40;                                            // Adjust if your title uses a different height
+  // int button_height = 52;                                           // Button height + margin
+  // int tabview_y = title_height + 8;                                 // 8px offset from top
+  // int tabview_height = LV_VER_RES - tabview_y - button_height - 16; // 16px for bottom margin
 
   // Tabs - fill space between title and buttons, no padding
-  tab_view_ = std::make_unique<ui::LvglTabView>(lvObj_, LV_ALIGN_TOP_LEFT, 0, tabview_y, LV_PCT(100), tabview_height);
+  // tab_view = makeTabView(lvObj_, LV_ALIGN_TOP_LEFT, 0, tabview_y, LV_PCT(100), tabview_height);
 
-  auto tab_auto_ = tab_view_->addTab("Auto Detect");
-  auto tab_saved_ = tab_view_->addTab("Saved");
-  lv_obj_set_style_pad_all(tab_auto_, 0, LV_PART_MAIN);  // Remove all padding
-  lv_obj_set_style_pad_all(tab_saved_, 0, LV_PART_MAIN); // Remove all padding
+  // auto tab_auto = lv_tabview_add_tab(tab_view, "Auto Detect");
+  // auto tab_saved = lv_tabview_add_tab(tab_view, "Saved");
+  // lv_obj_set_style_pad_all(tab_auto, 0, LV_PART_MAIN);  // Remove all padding
+  // lv_obj_set_style_pad_all(tab_saved, 0, LV_PART_MAIN); // Remove all padding
 
   // List for Auto Detect
-  list_auto_ = std::make_unique<ui::LvglListView>(tab_auto_, 0, 0, LV_PCT(100), lv_obj_get_height(tab_auto_));
-  // TODO: Populate list_auto_ with mDNS discovered _withrottle devices
+  list_auto = makeListView(lvObj_, 0, 40, 320, 380);
+  lv_obj_add_event_cb(list_auto, event_listitem_click_trampoline, LV_EVENT_CLICKED, this);
 
   // List for Saved
-  list_saved_ = std::make_unique<ui::LvglListView>(tab_saved_, 0, 0, LV_PCT(100), lv_obj_get_height(tab_auto_));
-  // TODO: Populate list_saved_ with saved DCC connections
+  // list_saved = makeListView(tab_saved, 0, 0, LV_PCT(100), lv_obj_get_height(tab_saved));
 
   // Bottom Buttons
-  btn_back_ = std::make_unique<ui::LvglButton>(lvObj_, "Back", [this](lv_event_t *e) {
-    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-      if (auto screen = parentScreen_.lock()) {
-        resetMsgHandlers();
-        screen->showScreen();
-      }
-    }
-  });
-  btn_back_->setStyle("button.secondary");
-  btn_back_->setAlignment(LV_ALIGN_BOTTOM_LEFT, 8, -12);
-  btn_back_->setSize(100, 40);
+  btn_back = makeButton(lvObj_, "Back", 100, 40, LV_ALIGN_BOTTOM_LEFT, 8, -12, "button.secondary");
+  lv_obj_add_event_cb(btn_back, &ConnectDCCScreen::event_back_trampoline, LV_EVENT_CLICKED, this);
+  btn_save = makeButton(lvObj_, "Save", 100, 40, LV_ALIGN_BOTTOM_MID, 0, -12, "button.primary");
+  lv_obj_add_event_cb(btn_save, &ConnectDCCScreen::event_save_trampoline, LV_EVENT_CLICKED, this);
+  btn_connect = makeButton(lvObj_, "Connect", 100, 40, LV_ALIGN_BOTTOM_RIGHT, -8, -12, "button.primary");
+  lv_obj_add_event_cb(btn_connect, &ConnectDCCScreen::event_connect_trampoline, LV_EVENT_CLICKED, this);
 
-  btn_save_ = std::make_unique<ui::LvglButton>(lvObj_, "Save", [this](lv_event_t *e) {
-    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-      if (ui::LvglListItem::currentItem) {
-        auto dccItem = std::dynamic_pointer_cast<display::DCCConnectListItem>(ui::LvglListItem::currentItem);
-        if (dccItem) {
-          ESP_LOGI(TAG, "Save button pressed on %s", dccItem->getText().c_str());
-          // handle save action.
-          auto savedListItem =
-              std::make_shared<DCCConnectListItem>(list_saved_->lvObj(), savedListItems.size(), dccItem->device());
-          savedListItems.push_back(savedListItem);
-        }
-      }
-      // Handle connect action
-    }
-  });
-  btn_save_->setStyle("button.primary");
-  btn_save_->setAlignment(LV_ALIGN_BOTTOM_MID, 0, -12);
-  btn_save_->setSize(100, 40);
-
-  btn_connect_ = std::make_unique<ui::LvglButton>(lvObj_, "Connect", [this](lv_event_t *e) {
-    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-      resetMsgHandlers();
-      // TODO: Connect to selected DCC connection
-      if (auto dccItem = std::dynamic_pointer_cast<display::DCCConnectListItem>(ui::LvglListItem::currentItem)) {
-        connectToDCCServer(dccItem);
-      }
-    }
-  });
-  btn_connect_->setStyle("button.primary");
-  btn_connect_->setAlignment(LV_ALIGN_BOTTOM_RIGHT, -8, -12);
-  btn_connect_->setSize(100, 40);
-
-  mdns_added_sub_ = lv_msg_subscribe(
+  mdns_added_sub = lv_msg_subscribe(
       MSG_MDNS_DEVICE_ADDED,
       [](void *s, lv_msg_t *msg) {
         ConnectDCCScreen *self = static_cast<ConnectDCCScreen *>(msg->user_data);
         self->refreshMdnsList();
       },
       this);
-  mdns_changed_sub_ = lv_msg_subscribe(
+  mdns_changed_sub = lv_msg_subscribe(
       MSG_MDNS_DEVICE_CHANGED,
       [](void *s, lv_msg_t *msg) {
         ConnectDCCScreen *self = static_cast<ConnectDCCScreen *>(msg->user_data);
@@ -133,20 +90,20 @@ void ConnectDCCScreen::refreshMdnsList() {
     }
     if (!found) {
       ESP_LOGI(TAG, "Adding new device: %s", device.instance.c_str());
-      auto listItem = std::make_shared<DCCConnectListItem>(list_auto_->lvObj(), detectedListItems.size(), device);
+      auto listItem = std::make_shared<DCCConnectListItem>(list_auto, detectedListItems.size(), device);
       detectedListItems.push_back(listItem);
     }
   }
 }
 
 void ConnectDCCScreen::resetMsgHandlers() {
-  if (mdns_added_sub_) {
-    lv_msg_unsubscribe(mdns_added_sub_);
-    mdns_added_sub_ = nullptr;
+  if (mdns_added_sub) {
+    lv_msg_unsubscribe(mdns_added_sub);
+    mdns_added_sub = nullptr;
   }
-  if (mdns_changed_sub_) {
-    lv_msg_unsubscribe(mdns_changed_sub_);
-    mdns_changed_sub_ = nullptr;
+  if (mdns_changed_sub) {
+    lv_msg_unsubscribe(mdns_changed_sub);
+    mdns_changed_sub = nullptr;
   }
 }
 
@@ -160,13 +117,11 @@ void ConnectDCCScreen::refreshSavedList() {
 
 void ConnectDCCScreen::cleanUp() {
   ESP_LOGI(TAG, "Cleaning up ConnectDCCScreen");
-  // lbl_title_.reset();
-  // tab_view_.reset();
-  // list_auto_.reset();
-  // list_saved_.reset();
-  // btn_back_.reset();
-  // btn_save_.reset();
-  // btn_connect_.reset();
+  resetMsgHandlers();
+  detectedListItems.clear();
+  currentButton = nullptr;
+  savedListItem = nullptr;
+  lv_obj_del(lvObj_);
 }
 
 void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dccItem) {
@@ -181,12 +136,12 @@ void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dc
   auto wifiHandler = utilities::WifiHandler::instance();
   auto wifiControl = WifiControl::instance();
 
-  auto waitingScreen = WaitingScreen::instance();
+  auto waitingScreen = std::make_shared<WaitingScreen>();
   waitingScreen->setLabel("Connecting to:");
   waitingScreen->setSubLabel(dccItem->device().hostname);
   waitingScreen->showScreen(shared_from_this());
 
-  lv_msg_send(MSG_CONNECTING_TO_DCC_SERVER, nullptr);
+  lv_msg_send(MSG_CONNECTING_TO_DCC_SERVER, NULL);
   wifiControl->startConnectToServer(dccDevice.ip.c_str(), dccDevice.port);
 
   // Create a FreeRTOS task to wait for connection on core 0
@@ -210,13 +165,13 @@ void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dc
 
     if (currentConnectionState == WifiControl::CONNECTED) {
       args->wifiHandler->stopMdnsSearchLoop();
-      lv_msg_send(MSG_DCC_CONNECTION_SUCCESS, nullptr);
+      lv_msg_send(MSG_DCC_CONNECTION_SUCCESS, NULL);
       auto DCCMenuScreen = DCCMenu::instance();
-      DCCMenuScreen->setConnectedServer(args->ip, args->port, args->instance);
-      DCCMenuScreen->showScreen(WaitingScreen::instance());
       ESP_LOGI(TAG, "Successfully connected to DCC server at %s:%d", args->ip.c_str(), args->port);
+      DCCMenuScreen->setConnectedServer(args->ip, args->port, args->instance);
+      DCCMenuScreen->showScreen();
     } else {
-      lv_msg_send(MSG_DCC_CONNECTION_FAILED, nullptr);
+      lv_msg_send(MSG_DCC_CONNECTION_FAILED, NULL);
       ESP_LOGI(TAG, "Failed to connect to DCC server at %s:%d", args->ip.c_str(), args->port);
     }
     delete args;
@@ -226,6 +181,92 @@ void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dc
   xTaskCreatePinnedToCore(connect_wait_task, "connect_wait_task", 4096, args, 5, nullptr,
                           0 // Core 0
   );
+}
+
+void ConnectDCCScreen::button_connect_callback(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    resetMsgHandlers();
+    // TODO: Connect to selected DCC connection
+    if (currentButton) {
+      auto currentItem = getItem(currentButton);
+      if (currentItem) {
+        ESP_LOGI(TAG, "Connect button pressed on %s", currentItem->getText().c_str());
+        connectToDCCServer(currentItem);
+      }
+    }
+  }
+}
+
+void ConnectDCCScreen::button_save_callback(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    if (currentButton) {
+      auto currentItem = getItem(currentButton);
+      if (currentItem) {
+        ESP_LOGI(TAG, "Save button pressed on %s", currentItem->getText().c_str());
+        // handle save action.
+        // auto savedListItem = std::make_shared<DCCConnectListItem>(list_saved, savedListItems.size(),
+        // dccItem->device()); savedListItems.push_back(savedListItem);
+      }
+    }
+  }
+}
+
+void ConnectDCCScreen::button_back_callback(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    if (auto screen = parentScreen_.lock()) {
+      resetMsgHandlers();
+      screen->showScreen();
+    }
+  }
+}
+
+void ConnectDCCScreen::button_listitem_click_event_callback(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    ESP_LOGI("CONNECT_DCC", "List item clicked");
+
+    lv_obj_add_state(btn_connect, LV_STATE_DISABLED);
+    // You can handle the list item click event here if needed
+    lv_obj_t *target = lv_event_get_target(e);
+    /*The current target is always the container as the event is added to it*/
+    lv_obj_t *cont = lv_event_get_current_target(e);
+
+    /*If container was clicked do nothing*/
+    if (target == cont) {
+      ESP_LOGI("CONNECT_DCC", "Clicked on container, ignoring");
+      return;
+    }
+
+    // void * event_data = lv_event_get_user_data(e);
+    ESP_LOGI("CONNECT_DCC", "Clicked: %s", lv_list_get_btn_text(list_auto, target));
+
+    if (currentButton == target) {
+      currentButton = NULL;
+    } else {
+      currentButton = target;
+    }
+    lv_obj_t *parent = lv_obj_get_parent(target);
+    uint32_t i;
+    for (i = 0; i < lv_obj_get_child_cnt(parent); i++) {
+      lv_obj_t *child = lv_obj_get_child(parent, i);
+      if (child == currentButton) {
+        ESP_LOGI("CONNECT_DCC", "Setting CHECKED state on %s", lv_list_get_btn_text(list_auto, child));
+        lv_obj_add_state(child, LV_STATE_CHECKED);
+        lv_obj_clear_state(btn_connect, LV_STATE_DISABLED);
+      } else {
+        ESP_LOGI("CONNECT_DCC", "Clearing CHECKED state on %s", lv_list_get_btn_text(list_auto, child));
+        lv_obj_clear_state(child, LV_STATE_CHECKED);
+      }
+    }
+  }
+}
+
+std::shared_ptr<DCCConnectListItem> ConnectDCCScreen::getItem(lv_obj_t *bn) {
+  for (const auto &item : detectedListItems) {
+    if (item->getLvObj() == bn) {
+      return item;
+    }
+  }
+  return nullptr;
 }
 
 } // namespace display

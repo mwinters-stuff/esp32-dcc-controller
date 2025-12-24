@@ -1,7 +1,5 @@
 #pragma once
 #include "Screen.h"
-#include "ui/LvglButton.h"
-#include "ui/LvglLabel.h"
 #include <lvgl.h>
 #include <memory>
 

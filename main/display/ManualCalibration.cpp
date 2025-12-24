@@ -22,11 +22,11 @@ void ManualCalibration::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScree
   lbl_sub_title = makeLabel(lvObj_, "Touch corners to calibrate", LV_ALIGN_CENTER, 0, 0, "label.main");
 
   btn_start = makeButton(lvObj_, "Start Calibration", 200, 48, LV_ALIGN_BOTTOM_MID, 0, -80, "button.primary");
-  lv_obj_add_event_cb(btn_start, &ManualCalibration::event_start_trampoline, LV_EVENT_ALL, this);
+  lv_obj_add_event_cb(btn_start, &ManualCalibration::event_start_trampoline, LV_EVENT_CLICKED, this);
 
   if (parentScreen_.expired() == false) {
     btn_back = makeButton(lvObj_, "Back", 200, 48, LV_ALIGN_BOTTOM_MID, 0, -20, "button.secondary");
-    lv_obj_add_event_cb(btn_back, &ManualCalibration::event_back_trampoline, LV_EVENT_ALL, this);
+    lv_obj_add_event_cb(btn_back, &ManualCalibration::event_back_trampoline, LV_EVENT_CLICKED, this);
   }
 }
 

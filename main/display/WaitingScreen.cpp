@@ -1,28 +1,29 @@
 #include "WaitingScreen.h"
 #include "definitions.h"
+#include "LvglWrapper.h"
 
 namespace display {
 using namespace ui;
 
 void WaitingScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
 
-  spinner_ = std::make_unique<LvglSpinner>(lvObj_);
-  label_ = std::make_unique<LvglLabel>(lvObj_, message, LV_ALIGN_TOP_MID, 0, 100);
-  label_->setStyle("label.title");
-  sub_label_ = std::make_unique<LvglLabel>(lvObj_, subMessage, LV_ALIGN_TOP_MID, 0, 140);
-  sub_label_->setStyle("label.main");
+  spinner = makeSpinner(lvObj_, 0, 0, 40, 1000);
+  label = makeLabel(lvObj_, message.c_str(), LV_ALIGN_TOP_MID, 0, 100, "label.title");
+  sub_label = makeLabel(lvObj_, subMessage.c_str(), LV_ALIGN_TOP_MID, 0, 140, "label.main");
 
-  lv_msg_subscribe(
+  msg_subscribe_success = lv_msg_subscribe(
       MSG_DCC_CONNECTION_SUCCESS,
       [](void *s, lv_msg_t *msg) {
-        auto screen = WaitingScreen::instance();
-        if (auto parent = screen->parentScreen_.lock()) {
+        auto self = static_cast<WaitingScreen *>(msg->user_data);
+
+        if (auto parent = self->parentScreen_.lock()) {
+          self->unsubscribeAll();
           parent->showScreen();
         }
       },
       this);
 
-  lv_msg_subscribe(
+  msg_subscribe_failed = lv_msg_subscribe(
       MSG_DCC_CONNECTION_FAILED,
       [](void *s, lv_msg_t *msg) {
         auto self = static_cast<WaitingScreen *>(msg->user_data);
@@ -33,7 +34,9 @@ void WaitingScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
         esp_timer_create_args_t timer_args = {.callback =
                                                   [](void *arg) {
                                                     auto screen = static_cast<WaitingScreen *>(arg);
+                                   
                                                     if (auto parent = screen->parentScreen_.lock()) {
+                                                      screen->unsubscribeAll();
                                                       parent->showScreen();
                                                     }
                                                   },
@@ -49,16 +52,21 @@ void WaitingScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
 
 void WaitingScreen::setLabel(const std::string &text) {
   message = text;
-  if (label_) {
-    label_->setText(text);
+  if (label) {
+    lv_label_set_text(label, text.c_str());
   }
 }
 
 void WaitingScreen::setSubLabel(const std::string &text) {
   subMessage = text;
-  if (sub_label_) {
-    sub_label_->setText(text);
+  if (sub_label) {
+    lv_label_set_text(sub_label, text.c_str());
   }
+}
+
+void WaitingScreen::unsubscribeAll() {
+  lv_msg_unsubscribe(msg_subscribe_success);
+  lv_msg_unsubscribe(msg_subscribe_failed);
 }
 
 } // namespace display

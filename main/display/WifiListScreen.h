@@ -3,15 +3,9 @@
 #include <memory>
 #include <utility>
 #include <vector>
+#include "WifiListItem.h"
 
 #include "Screen.h"
-
-#include "WifiListItem.h"
-#include "ui/LvglButton.h"
-#include "ui/LvglLabel.h"
-#include "ui/LvglListView.h"
-#include "ui/LvglSpinner.h"
-#include "ui/LvglTheme.h"
 
 namespace display {
 using namespace ui;
@@ -30,28 +24,52 @@ public:
   void cleanUp() override;
 
   // Optionally return the list object to load screen
-  lv_obj_t *listObj() const { return list_view_->lvObj(); }
-  lv_obj_t *titleObj() const { return lbl_title_->lvObj(); }
 
   WifiListScreen(const WifiListScreen &) = delete;
   WifiListScreen &operator=(const WifiListScreen &) = delete;
 
+  void button_connect_event_callback(lv_event_t *e);
+  void button_back_event_callback(lv_event_t *e);
+  void button_listitem_click_event_callback(lv_event_t *e);
+
 protected:
   WifiListScreen() = default;
+
+  static void event_connect_trampoline(lv_event_t *e) {
+    auto *self = static_cast<WifiListScreen *>(lv_event_get_user_data(e));
+    if (self)
+      self->button_connect_event_callback(e);
+  }
+
+  static void event_back_trampoline(lv_event_t *e) {
+    auto *self = static_cast<WifiListScreen *>(lv_event_get_user_data(e));
+    if (self)
+      self->button_back_event_callback(e);
+  }
+
+  static void event_listitem_click_trampoline(lv_event_t *e) {
+    auto *self = static_cast<WifiListScreen *>(lv_event_get_user_data(e));
+    if (self)
+      self->button_listitem_click_event_callback(e);
+  }
 
 private:
   TaskHandle_t scanTaskHandle = 0;
   lv_obj_t *_lv_obj = nullptr;
-  std::unique_ptr<LvglLabel> lbl_title_;
-  std::unique_ptr<LvglButton> btn_back_;
-  std::unique_ptr<LvglButton> btn_connect_;
-  std::unique_ptr<LvglListView> list_view_;
-  std::vector<std::shared_ptr<WifiListItem>> items_;
-  std::unique_ptr<LvglSpinner> spinner_;
+  lv_obj_t * lbl_title;
+  lv_obj_t * btn_back;
+  lv_obj_t * btn_connect;
+  lv_obj_t * list_view;
+  lv_obj_t * spinner;
+  lv_obj_t * currentButton = nullptr;
+
+  std::vector<std::shared_ptr<WifiListItem>> items;
+
   void scanWifiTask();
   void populateList(const std::vector<wifi_ap_record_t> &records);
   void disableButtons();
   void enableButtons();
+  std::shared_ptr<WifiListItem> getCurrentCheckedItem(lv_obj_t *bn);
 };
 
 } // namespace display

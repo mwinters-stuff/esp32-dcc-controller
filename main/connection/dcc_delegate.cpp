@@ -17,26 +17,26 @@ void DCCEXProtocolDelegateImpl::receivedMessage(char *message) { printf("Broadca
 
 void DCCEXProtocolDelegateImpl::receivedRosterList() {
   printf("Roster list received.\n");
-  lv_msg_send(MSG_DCC_ROSTER_LIST_RECEIVED, nullptr);
+  lv_msg_send(MSG_DCC_ROSTER_LIST_RECEIVED, NULL);
   // WaitingScreen::instance()->setLabel("Roster list received.");
   // LocoController::getInstance()->loadLocosFromStorage();
 }
 
 void DCCEXProtocolDelegateImpl::receivedTurnoutList() {
    printf("Turnout list received.\n");
-    lv_msg_send(MSG_DCC_TURNOUT_LIST_RECEIVED, nullptr);
+    lv_msg_send(MSG_DCC_TURNOUT_LIST_RECEIVED, NULL);
   //  WaitingScreen::instance()->setLabel("Turnout list received.");
 }
 
 void DCCEXProtocolDelegateImpl::receivedRouteList() {
    printf("Route list received.\n");
-    lv_msg_send(MSG_DCC_ROUTE_LIST_RECEIVED, nullptr);
+    lv_msg_send(MSG_DCC_ROUTE_LIST_RECEIVED, NULL);
   //  WaitingScreen::instance()->setLabel("Route list received.");
 }
 
 void DCCEXProtocolDelegateImpl::receivedTurntableList() {
    printf("Turntable list received.\n");
-    lv_msg_send(MSG_DCC_TURNTABLE_LIST_RECEIVED, nullptr);
+    lv_msg_send(MSG_DCC_TURNTABLE_LIST_RECEIVED, NULL);
   //  WaitingScreen::instance()->setLabel("Turntable list received.");
 }
 

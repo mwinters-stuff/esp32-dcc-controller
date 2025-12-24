@@ -371,7 +371,7 @@ void WifiHandler::addWithrottleDeviceFromResult(mdns_result_t *r) {
       existing.ip = dev.ip.empty() ? existing.ip : dev.ip;
       existing.txt = dev.txt.empty() ? existing.txt : dev.txt;
       ESP_LOGI(TAG, "mDNS: updated existing device (hostname): %s", existing.hostname.c_str());
-      lv_msg_send(MSG_MDNS_DEVICE_CHANGED, nullptr);
+      lv_msg_send(MSG_MDNS_DEVICE_CHANGED, NULL);
       return;
     }
 
@@ -382,14 +382,14 @@ void WifiHandler::addWithrottleDeviceFromResult(mdns_result_t *r) {
       existing.hostname = existing.hostname.empty() ? dev.hostname : existing.hostname;
       existing.txt = dev.txt.empty() ? existing.txt : dev.txt;
       ESP_LOGI(TAG, "mDNS: updated existing device (ip): %s", existing.ip.c_str());
-      lv_msg_send(MSG_MDNS_DEVICE_CHANGED, nullptr);
+      lv_msg_send(MSG_MDNS_DEVICE_CHANGED, NULL);
       return;
     }
   }
 
   // not found => append
   withrottle_devices.push_back(std::move(dev));
-  lv_msg_send(MSG_MDNS_DEVICE_ADDED, nullptr);
+  lv_msg_send(MSG_MDNS_DEVICE_ADDED, NULL);
   ESP_LOGI(TAG, "mDNS: adding new device (ip): %s devices: %d", dev.ip.c_str(), (int)withrottle_devices.size());
 }
 

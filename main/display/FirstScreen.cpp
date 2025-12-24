@@ -54,7 +54,7 @@ void FirstScreen::disableButtons() {
   ESP_LOGI(TAG, "DisableButtons");
   // Disable all buttons (C LVGL)
   lv_obj_add_state(btn_connect, LV_STATE_DISABLED);
-  lv_obj_add_state(btn_cal, LV_STATE_DISABLED);
+  lv_obj_clear_state(btn_cal, LV_STATE_DISABLED);
   lv_obj_add_state(btn_wifi_scan, LV_STATE_DISABLED);
 }
 
@@ -65,17 +65,18 @@ void FirstScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
 
   // "Connect" button
   btn_connect = makeButton(lvObj_, "Connect", 200, 48, LV_ALIGN_CENTER, 0, -60, "button.primary");
-  lv_obj_add_event_cb(btn_connect, &FirstScreen::event_connect_trampoline, LV_EVENT_ALL, this);
+  lv_obj_add_event_cb(btn_connect, &FirstScreen::event_connect_trampoline, LV_EVENT_CLICKED, this);
 
     // "Scan WiFi" button
   btn_wifi_scan = makeButton(lvObj_, "Scan WiFi", 200, 48, LV_ALIGN_CENTER, 0, 0, "button.primary");
-  lv_obj_add_event_cb(btn_wifi_scan, &FirstScreen::event_wifi_list_trampoline, LV_EVENT_ALL, this);
-  lv_obj_add_event_cb(btn_wifi_scan, &FirstScreen::event_wifi_list_trampoline, LV_EVENT_ALL, this);
+  lv_obj_add_event_cb(btn_wifi_scan, &FirstScreen::event_wifi_list_trampoline, LV_EVENT_CLICKED, this);
 
   // "Calibrate" button
   btn_cal = makeButton(lvObj_, "Calibrate", 200, 48, LV_ALIGN_CENTER, 0, 60, "button.secondary");
-  lv_obj_add_event_cb(btn_cal, &FirstScreen::event_calibrate_trampoline, LV_EVENT_ALL, this);
+  lv_obj_add_event_cb(btn_cal, &FirstScreen::event_calibrate_trampoline, LV_EVENT_CLICKED, this);
 
+  disableButtons();
+  
   // Status labels under the last button
   auto ip = utilities::WifiHandler::instance()->getIpAddress();
   bool connected = !ip.empty();
@@ -88,6 +89,11 @@ void FirstScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   subscribe_failed = lv_msg_subscribe(MSG_WIFI_FAILED, &FirstScreen::wifi_failed_trampoline, this);
   subscribe_not_saved = lv_msg_subscribe(MSG_WIFI_NOT_SAVED, &FirstScreen::wifi_not_saved_trampoline, this);
   ESP_LOGI(TAG, "FirstScreen UI created (C LVGL)");
+  if (!connected) {
+    enableButtons(false);
+  } else {
+    enableButtons(true);
+  }
 }
 
 void FirstScreen::unsubscribeAll() {
