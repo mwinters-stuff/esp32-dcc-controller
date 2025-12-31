@@ -152,8 +152,6 @@ void setup()
   auto theme = std::make_shared<ui::LvglTheme>("Default");
   ui::LvglTheme::setActive(theme);
 
-
-
   switch (calibrated)
   {
   case display::calibrateState::calibrated:

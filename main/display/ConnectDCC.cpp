@@ -6,6 +6,7 @@
 #include "connection/wifi_control.h"
 #include "definitions.h"
 #include "utilities/WifiHandler.h"
+#include "FirstScreen.h"
 #include <memory>
 #include <vector>
 
@@ -21,20 +22,6 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
 
   // Title
   lbl_title = makeLabel(lvObj_, "Connect DCC", LV_ALIGN_TOP_MID, 0, 8, "label.title", &lv_font_montserrat_30);
-
-  // // Calculate tabview position and size
-  // int title_height = 40;                                            // Adjust if your title uses a different height
-  // int button_height = 52;                                           // Button height + margin
-  // int tabview_y = title_height + 8;                                 // 8px offset from top
-  // int tabview_height = LV_VER_RES - tabview_y - button_height - 16; // 16px for bottom margin
-
-  // Tabs - fill space between title and buttons, no padding
-  // tab_view = makeTabView(lvObj_, LV_ALIGN_TOP_LEFT, 0, tabview_y, LV_PCT(100), tabview_height);
-
-  // auto tab_auto = lv_tabview_add_tab(tab_view, "Auto Detect");
-  // auto tab_saved = lv_tabview_add_tab(tab_view, "Saved");
-  // lv_obj_set_style_pad_all(tab_auto, 0, LV_PART_MAIN);  // Remove all padding
-  // lv_obj_set_style_pad_all(tab_saved, 0, LV_PART_MAIN); // Remove all padding
 
   // List for Auto Detect
   list_auto = makeListView(lvObj_, 0, 40, 320, 380);
@@ -66,6 +53,11 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
       },
       this);
 
+  subscribe_failed = lv_msg_subscribe(MSG_WIFI_FAILED, [](void *s, lv_msg_t *msg) {
+    ESP_LOGI(TAG, "Not connected to wifi");
+    auto firstScreen = FirstScreen::instance();
+    firstScreen->showScreen();
+  },this);
   refreshMdnsList();
 }
 
@@ -97,6 +89,10 @@ void ConnectDCCScreen::refreshMdnsList() {
 }
 
 void ConnectDCCScreen::resetMsgHandlers() {
+  if (subscribe_failed) {
+    lv_msg_unsubscribe(subscribe_failed);
+    subscribe_failed = nullptr;
+  }
   if (mdns_added_sub) {
     lv_msg_unsubscribe(mdns_added_sub);
     mdns_added_sub = nullptr;
@@ -134,7 +130,7 @@ void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dc
 
   auto dccDevice = dccItem->device();
   auto wifiHandler = utilities::WifiHandler::instance();
-  auto wifiControl = WifiControl::instance();
+  auto wifiControl = utilities::WifiControl::instance();
 
   auto waitingScreen = std::make_shared<WaitingScreen>();
   waitingScreen->setLabel("Connecting to:");
@@ -147,7 +143,7 @@ void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dc
   // Create a FreeRTOS task to wait for connection on core 0
   struct ConnectTaskArgs {
     std::shared_ptr<utilities::WifiHandler> wifiHandler;
-    std::shared_ptr<WifiControl> wifiControl;
+    std::shared_ptr<utilities::WifiControl> wifiControl;
     std::string ip;
     int port;
     std::string instance;
@@ -156,14 +152,14 @@ void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dc
 
   auto connect_wait_task = [](void *arg) {
     auto *args = static_cast<ConnectTaskArgs *>(arg);
-    WifiControl::connection_state currentConnectionState = WifiControl::NOT_CONNECTED;
+    utilities::WifiControl::connection_state currentConnectionState = utilities::WifiControl::NOT_CONNECTED;
 
     do {
       vTaskDelay(pdMS_TO_TICKS(50));
       currentConnectionState = args->wifiControl->connectionState();
-    } while (currentConnectionState == WifiControl::CONNECTING);
+    } while (currentConnectionState == utilities::WifiControl::CONNECTING);
 
-    if (currentConnectionState == WifiControl::CONNECTED) {
+    if (currentConnectionState == utilities::WifiControl::CONNECTED) {
       args->wifiHandler->stopMdnsSearchLoop();
       lv_msg_send(MSG_DCC_CONNECTION_SUCCESS, NULL);
       auto DCCMenuScreen = DCCMenu::instance();

@@ -29,7 +29,7 @@ public:
   void setConnectedServer(std::string ip, int port, std::string dccname);
 
   void button_roster_callback(lv_event_t *e);
-  void button_points_callback(lv_event_t *e);
+  void button_turnouts_callback(lv_event_t *e);
   void button_routes_callback(lv_event_t *e);
   void button_turntables_callback(lv_event_t *e);
   void button_back_callback(lv_event_t *e);
@@ -42,10 +42,10 @@ protected:
       self->button_roster_callback(e);
   }
 
-  static void event_points_trampoline(lv_event_t *e) {
+  static void event_turnouts_trampoline(lv_event_t *e) {
     auto *self = static_cast<DCCMenu *>(lv_event_get_user_data(e));
     if (self)
-      self->button_points_callback(e);
+      self->button_turnouts_callback(e);
   }
 
   static void event_routes_trampoline(lv_event_t *e) {
@@ -67,6 +67,7 @@ protected:
       self->button_back_callback(e);
   }
 
+  void enableIfReceivedLists();
 private:
   void *subscribe_failed;
   void *subscribe_not_saved;
@@ -82,7 +83,7 @@ private:
 
   lv_obj_t *lbl_title;
   lv_obj_t *btn_roster;
-  lv_obj_t *btn_points;
+  lv_obj_t *btn_turnouts;
   lv_obj_t *btn_routes;
   lv_obj_t *btn_turntables;
   lv_obj_t *btn_close;

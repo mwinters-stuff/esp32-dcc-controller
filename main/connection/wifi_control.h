@@ -11,6 +11,8 @@
 #include "dcc_delegate.h"
 #include "wifi_connection.h"
 
+namespace utilities {
+
 class WifiControl {
 private:
   std::shared_ptr<DCCExController::DCCEXProtocol> dccExProtocol;
@@ -65,5 +67,6 @@ private:
   };
   static void connect_task(void *arg);
 };
+}; // namespace utilities
 
 #endif

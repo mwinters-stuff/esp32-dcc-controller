@@ -10,6 +10,7 @@
 #include <esp_log.h>
 #include <esp_timer.h>
 
+namespace utilities {
 // Define the static instance variable
 // std::shared_ptr<WifiControl> WifiControl::instance = nullptr;
 extern QueueHandle_t tcp_fail_queue;
@@ -227,3 +228,5 @@ void WifiControl::connect_task(void *arg) {
   delete args;
   vTaskDelete(nullptr);
 }
+
+}; // namespace utilities

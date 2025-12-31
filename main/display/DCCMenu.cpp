@@ -4,6 +4,7 @@
 #include "FirstScreen.h"
 #include "LvglWrapper.h"
 #include "connection/wifi_control.h"
+#include "TurnoutList.h"
 #include "definitions.h"
 #include <esp_log.h>
 
@@ -19,7 +20,7 @@ void DCCMenu::setConnectedServer(std::string ip, int port, std::string dccname) 
 void DCCMenu::enableButtons(bool enableConnect) {
   ESP_LOGI(TAG, "EnableButtons");
   lv_obj_clear_state(btn_roster, LV_STATE_DISABLED);
-  lv_obj_clear_state(btn_points, LV_STATE_DISABLED);
+  lv_obj_clear_state(btn_turnouts, LV_STATE_DISABLED);
   lv_obj_clear_state(btn_routes, LV_STATE_DISABLED);
   lv_obj_clear_state(btn_turntables, LV_STATE_DISABLED);
 }
@@ -27,7 +28,7 @@ void DCCMenu::enableButtons(bool enableConnect) {
 void DCCMenu::disableButtons() {
   ESP_LOGI(TAG, "DisableButtons");
   lv_obj_add_state(btn_roster, LV_STATE_DISABLED);
-  lv_obj_add_state(btn_points, LV_STATE_DISABLED);
+  lv_obj_add_state(btn_turnouts, LV_STATE_DISABLED);
   lv_obj_add_state(btn_routes, LV_STATE_DISABLED);
   lv_obj_add_state(btn_turntables, LV_STATE_DISABLED);
 }
@@ -39,10 +40,10 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   // "Roster" button
   btn_roster = makeButton(lvObj_, "Roster", 200, 48, LV_ALIGN_CENTER, 0, -120, "button.primary");
   lv_obj_add_event_cb(btn_roster, &DCCMenu::event_roster_trampoline, LV_EVENT_CLICKED, this);
-  // "Points" button
+  // "Turnouts" button
 
-  btn_points = makeButton(lvObj_, "Points", 200, 48, LV_ALIGN_CENTER, 0, -60, "button.primary");
-  lv_obj_add_event_cb(btn_points, &DCCMenu::event_points_trampoline, LV_EVENT_CLICKED, this);
+  btn_turnouts = makeButton(lvObj_, "Turnouts", 200, 48, LV_ALIGN_CENTER, 0, -60, "button.primary");
+  lv_obj_add_event_cb(btn_turnouts, &DCCMenu::event_turnouts_trampoline, LV_EVENT_CLICKED, this);
 
   // "Routes" button
   btn_routes = makeButton(lvObj_, "Routes", 200, 48, LV_ALIGN_CENTER, 0, 0, "button.primary");
@@ -84,7 +85,7 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
         // Handle turnout list received
         std::shared_ptr<DCCMenu> self = static_cast<DCCMenu *>(msg->user_data)->shared_from_this();
         lv_label_set_text(self->lbl_status, "Turnout list received.");
-         lv_obj_clear_state(self->btn_points, LV_STATE_DISABLED);
+         lv_obj_clear_state(self->btn_turnouts, LV_STATE_DISABLED);
       },
       this);
 
@@ -113,7 +114,36 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   // Show connection state and IP (IP empty when disconnected)
   lbl_status = makeLabel(lvObj_, "", LV_ALIGN_TOP_MID, 0, 40,"label.main");
 
+  enableIfReceivedLists();
+
   ESP_LOGI(TAG, "DCCMenu UI created");
+}
+
+void DCCMenu::enableIfReceivedLists() {
+  auto wifiControl = utilities::WifiControl::instance();
+  auto dccProtocol = wifiControl->dccProtocol();
+
+  if(dccProtocol == nullptr) {
+    ESP_LOGW(TAG, "DCC Protocol is null, cannot enable buttons");
+    return;
+  }
+
+  if(dccProtocol->receivedRoster()){
+    ESP_LOGI(TAG, "DCC Roster list already received, enabling roster button");
+    lv_obj_clear_state(btn_roster, LV_STATE_DISABLED);
+  }
+  if(dccProtocol->receivedTurnoutList()){
+    ESP_LOGI(TAG, "DCC Turnout list already received, enabling turnouts button");
+    lv_obj_clear_state(btn_turnouts, LV_STATE_DISABLED);
+  }
+  if( dccProtocol->receivedRouteList()){
+    ESP_LOGI(TAG, "DCC Route list already received, enabling routes button");
+    lv_obj_clear_state(btn_routes, LV_STATE_DISABLED);
+  }
+  if(dccProtocol->receivedTurntableList()) {
+    ESP_LOGI(TAG, "DCC Turntable list already received, enabling turntables button");
+    lv_obj_clear_state(btn_turntables, LV_STATE_DISABLED);
+  } 
 }
 
 void DCCMenu::unsubscribeAll() {
@@ -156,10 +186,14 @@ void DCCMenu::button_roster_callback(lv_event_t *e) {
   }
 }
 
-void DCCMenu::button_points_callback(lv_event_t *e) {
+void DCCMenu::button_turnouts_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-    ESP_LOGI(TAG, "Points button clicked!");
+    ESP_LOGI(TAG, "Turnout button clicked!");
     unsubscribeAll();
+
+    auto turnoutListScreen = TurnoutListScreen::instance();
+    turnoutListScreen->showScreen(shared_from_this());
+
   }
 }
 
@@ -173,6 +207,7 @@ void DCCMenu::button_routes_callback(lv_event_t *e) {
 void DCCMenu::button_turntables_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI(TAG, "Turntables button clicked!");
+
     unsubscribeAll();
   }
 }
@@ -181,7 +216,7 @@ void DCCMenu::button_back_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI(TAG, "Close button clicked!");
     unsubscribeAll();
-    auto wifiControl = WifiControl::instance();
+    auto wifiControl = utilities::WifiControl::instance();
     wifiControl->disconnect();
     auto firstScreen = FirstScreen::instance();
     firstScreen->showScreen();

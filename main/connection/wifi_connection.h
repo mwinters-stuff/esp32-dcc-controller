@@ -11,7 +11,9 @@
 #include <stdarg.h>
 
 // Declare a queue handle
+namespace utilities {
 extern QueueHandle_t tcp_fail_queue;
+
 
 class TCPSocketStream : public DCCExController::DCCStream {
 private:
@@ -244,5 +246,5 @@ public:
   // Destructor to close the socket
   ~LoggingStream() {}
 };
-
+}
 #endif

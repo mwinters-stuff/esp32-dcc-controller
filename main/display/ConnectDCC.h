@@ -38,6 +38,7 @@ private:
 
   void *mdns_added_sub = nullptr;
   void *mdns_changed_sub = nullptr;
+  void *subscribe_failed = nullptr;
 
   lv_obj_t *lbl_title;
   // lv_obj_t *tab_view;

@@ -23,5 +23,6 @@ namespace display {
   lv_obj_t* makeTabView(lv_obj_t* parent, lv_align_t align, int x_ofs, int y_ofs, int width, int height);
   
   void lv_list_set_btn_text(lv_obj_t* btn, const char* text);
-
+  void lv_list_set_btn_icon(lv_obj_t *btn, const lv_img_dsc_t *icon);
+  lv_obj_t * lv_list_add_btn_mode(lv_obj_t * list, const void * icon, const char * txt, const lv_label_long_mode_t mode);
 }
