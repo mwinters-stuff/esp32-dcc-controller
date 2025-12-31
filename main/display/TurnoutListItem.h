@@ -23,12 +23,9 @@ public:
 
   lv_obj_t* getLvObj() const { return lvObj; }
 
-  std::string updateName(bool thrown) {
+  void updateThrown(bool thrown) {
     this->thrown = thrown;
-    std::string displayText = getDisplayName();
-    lv_list_set_btn_text(lvObj, displayText.c_str());
     lv_list_set_btn_icon(lvObj, getImage());
-    return displayText;
   }
 
   std::string getDisplayName() const {

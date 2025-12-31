@@ -70,6 +70,9 @@ void DCCEXProtocolDelegateImpl::receivedTrackType(char track, DCCExController::T
 
 void DCCEXProtocolDelegateImpl::receivedTurnoutAction(int turnoutId, bool thrown) {
   printf("Turnout Action: ID=%d, Thrown=%s\n", turnoutId, thrown ? "true" : "false");
+  turnoutActionData.turnoutId = turnoutId;
+  turnoutActionData.thrown = thrown;
+  lv_msg_send(MSG_DCC_TURNOUT_CHANGED, &turnoutActionData);
 }
 
 void DCCEXProtocolDelegateImpl::receivedTurntableAction(int turntableId, int position, bool moving) {

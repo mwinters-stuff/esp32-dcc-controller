@@ -5,6 +5,7 @@
 #include "LvglWrapper.h"
 #include "connection/wifi_control.h"
 #include "TurnoutList.h"
+#include "RosterList.h"
 #include "definitions.h"
 #include <esp_log.h>
 
@@ -183,6 +184,9 @@ void DCCMenu::button_roster_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI(TAG, "Roster button clicked!");
     unsubscribeAll();
+
+    auto rosterListScreen = RosterListScreen::instance();
+    rosterListScreen->showScreen(shared_from_this());
   }
 }
 

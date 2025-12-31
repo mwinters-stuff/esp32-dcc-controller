@@ -5,6 +5,11 @@
 #include <DCCEXProtocol.h>
 #include <stdio.h>
 
+struct TurnoutActionData{
+  int turnoutId;
+  bool thrown;
+};
+
 class DCCEXProtocolDelegateImpl : public DCCExController::DCCEXProtocolDelegate {
 public:
     DCCEXProtocolDelegateImpl() {}
@@ -49,6 +54,9 @@ public:
     void receivedScreenUpdate(int screen, int row, char *message) override;
 
     uint32_t millis() override;
+
+
+    TurnoutActionData turnoutActionData;
 };
 
 #endif
