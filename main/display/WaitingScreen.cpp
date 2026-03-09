@@ -7,16 +7,16 @@ using namespace ui;
 
 void WaitingScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
-  lv_obj_clean(lv_scr_act());
-  lvObj_ = lv_scr_act();
+  lv_obj_clean(lv_screen_active());
+  lvObj_ = lv_screen_active();
   spinner = makeSpinner(lvObj_, 0, 0, 40, 1000);
   label = makeLabel(lvObj_, message.c_str(), LV_ALIGN_TOP_MID, 0, 100, "label.title");
   sub_label = makeLabel(lvObj_, subMessage.c_str(), LV_ALIGN_TOP_MID, 0, 140, "label.main");
 
   msg_subscribe_success = lv_msg_subscribe(
       MSG_DCC_CONNECTION_SUCCESS,
-      [](void *s, lv_msg_t *msg) {
-        auto self = static_cast<WaitingScreen *>(msg->user_data);
+      [](lv_msg_t *msg) {
+        auto self = static_cast<WaitingScreen *>(lv_msg_get_user_data(msg));
 
         if (auto parent = self->parentScreen_.lock()) {
           self->unsubscribeAll();
@@ -27,8 +27,8 @@ void WaitingScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
 
   msg_subscribe_failed = lv_msg_subscribe(
       MSG_DCC_CONNECTION_FAILED,
-      [](void *s, lv_msg_t *msg) {
-        auto self = static_cast<WaitingScreen *>(msg->user_data);
+      [](lv_msg_t *msg) {
+        auto self = static_cast<WaitingScreen *>(lv_msg_get_user_data(msg));
         if (self->isCleanedUp)
           return;
         self->setLabel("Connection Failed");

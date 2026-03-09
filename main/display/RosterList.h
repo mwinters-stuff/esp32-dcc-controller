@@ -30,7 +30,7 @@ public:
 private:
   std::vector<std::shared_ptr<RosterListItem>> listItems;
 
-  void *subscribe_failed = nullptr;
+  lv_msg_sub_dsc_t *subscribe_failed = nullptr;
 
   bool isCleanedUp = false;
   lv_obj_t *lbl_title = nullptr;

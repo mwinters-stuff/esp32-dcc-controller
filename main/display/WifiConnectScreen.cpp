@@ -15,7 +15,7 @@ extern EventGroupHandle_t wifi_event_group;
 namespace display {
 static const char *TAG = "WIFI_CONNECT_SCREEN";
 
-void WifiConnectScreen::wifi_connected_callback(void *s, lv_msg_t *msg) {
+void WifiConnectScreen::wifi_connected_callback(lv_msg_t *msg) {
   if (isCleanedUp)
     return;
   lv_label_set_text(lbl_status, "Connected!");
@@ -24,7 +24,7 @@ void WifiConnectScreen::wifi_connected_callback(void *s, lv_msg_t *msg) {
   // Close after short delay
   lv_timer_create(
       [](lv_timer_t *t) {
-        WifiConnectScreen *self = static_cast<WifiConnectScreen *>(t->user_data);
+        WifiConnectScreen *self = static_cast<WifiConnectScreen *>(lv_timer_get_user_data(t));
         if (!self || self->isCleanedUp)
           return;
         self->cleanUp();
@@ -39,12 +39,12 @@ void WifiConnectScreen::wifi_connected_callback(void *s, lv_msg_t *msg) {
             },
             "wifi_save_cfg", 2048, nullptr, tskIDLE_PRIORITY, nullptr);
 
-        lv_timer_del(t);
+        lv_timer_delete(t);
       },
       1500, this);
 }
 
-void WifiConnectScreen::wifi_failed_callback(void *s, lv_msg_t *msg) {
+void WifiConnectScreen::wifi_failed_callback(lv_msg_t *msg) {
   if (isCleanedUp)
     return;
   lv_label_set_text(lbl_status, "Connection Failed");
@@ -89,7 +89,7 @@ void WifiConnectScreen::setSSID(const std::string &ssid) { this->ssid = ssid; }
 
 void WifiConnectScreen::createScreen() {
 
-  lv_obj_set_size(lvObj_, LV_HOR_RES, LV_VER_RES);
+  lv_obj_set_size(lvObj_, lv_display_get_horizontal_resolution(NULL), lv_display_get_vertical_resolution(NULL));
   lv_obj_center(lvObj_);
 
   lbl_title = makeLabel(lvObj_, "Connecting To", LV_ALIGN_TOP_MID, 0, 8, "label.title", &lv_font_montserrat_22);
@@ -126,7 +126,7 @@ void WifiConnectScreen::createScreen() {
   lbl_status = makeLabel(vert_container, "", LV_ALIGN_TOP_MID, 0, 100);
   lv_obj_add_flag(lbl_status, LV_OBJ_FLAG_HIDDEN);
 
-  lbl_spinner = makeSpinner(lv_scr_act(), 0, 0, 40, 1000);
+  lbl_spinner = makeSpinner(lv_screen_active(), 0, 0, 40, 1000);
   lv_obj_add_flag(lbl_spinner, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -134,7 +134,7 @@ void WifiConnectScreen::event_password_show_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
   if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
-    lv_obj_t *btn = lv_event_get_target(e);
+    lv_obj_t *btn = (lv_obj_t *)lv_event_get_target(e);
     bool checked = lv_obj_has_state(btn, LV_STATE_CHECKED);
     lv_obj_t *row = lv_obj_get_parent(btn);
     lv_obj_t *ta = lv_obj_get_child(row, 0);

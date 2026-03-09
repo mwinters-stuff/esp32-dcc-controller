@@ -6,33 +6,33 @@ static const char *TAG = "LVGL_WRAPPER";
 
 void setStyle(lv_obj_t *widget, const std::string &styleName) {
   auto theme = ui::LvglTheme::active();
-  if(theme == nullptr) {
+  if (theme == nullptr) {
     ESP_LOGW(TAG, "No active theme set (setStyle), cannot apply style '%s'", styleName.c_str());
     return;
   }
   auto s = theme->get(styleName);
   if (s) {
-    ESP_LOGI(TAG, "Applying style '%s' to widget %p", styleName.c_str(), (void*)widget);
+    ESP_LOGI(TAG, "Applying style '%s' to widget %p", styleName.c_str(), (void *)widget);
     s->applyTo(widget);
   }
 }
 
-void setStylePart(lv_obj_t *widget, const std::string &styleName, lv_part_t part) {
+void setStylePart(lv_obj_t *widget, const std::string &styleName, lv_style_selector_t selector) {
   auto theme = ui::LvglTheme::active();
-  if(theme == nullptr) {
+  if (theme == nullptr) {
     ESP_LOGW(TAG, "No active theme set (setStylePart), cannot apply style '%s'", styleName.c_str());
     return;
   }
   auto s = theme->get(styleName);
   if (s) {
-    ESP_LOGI(TAG, "Applying style part '%s' to widget %p", styleName.c_str(), (void*)widget);
-    s->applyTo(widget, part);
+    ESP_LOGI(TAG, "Applying style part '%s' to widget %p", styleName.c_str(), (void *)widget);
+    s->applyTo(widget, selector);
   }
 }
 
-lv_obj_t *getActiveScreen() { return lv_scr_act(); }
+lv_obj_t *getActiveScreen() { return lv_screen_active(); }
 
-lv_obj_t *makeLabel(lv_obj_t *parent, const char *text, lv_align_t align, lv_coord_t x_ofs, lv_coord_t y_ofs,
+lv_obj_t *makeLabel(lv_obj_t *parent, const char *text, lv_align_t align, int32_t x_ofs, int32_t y_ofs,
                     const std::string &styleName, const lv_font_t *font) {
   lv_obj_t *label = lv_label_create(parent);
   lv_label_set_text(label, text);
@@ -44,8 +44,8 @@ lv_obj_t *makeLabel(lv_obj_t *parent, const char *text, lv_align_t align, lv_coo
   return label;
 }
 
-lv_obj_t *makeButton(lv_obj_t *parent, const char *text, lv_coord_t width, lv_coord_t height, lv_align_t align,
-                     lv_coord_t x_ofs, lv_coord_t y_ofs, const std::string &styleName, const lv_font_t *font) {
+lv_obj_t *makeButton(lv_obj_t *parent, const char *text, int32_t width, int32_t height, lv_align_t align, int32_t x_ofs,
+                     int32_t y_ofs, const std::string &styleName, const lv_font_t *font) {
   lv_obj_t *btn = lv_btn_create(parent);
   lv_obj_set_size(btn, width, height);
   lv_obj_align(btn, align, x_ofs, y_ofs);
@@ -60,7 +60,7 @@ lv_obj_t *makeButton(lv_obj_t *parent, const char *text, lv_coord_t width, lv_co
   return btn;
 }
 
-lv_obj_t *makeListView(lv_obj_t *parent, lv_coord_t x, lv_coord_t y, lv_coord_t width, lv_coord_t height,
+lv_obj_t *makeListView(lv_obj_t *parent, int32_t x, int32_t y, int32_t width, int32_t height,
                        const std::string &styleName) {
   lv_obj_t *list = lv_list_create(parent);
   lv_obj_align(list, LV_ALIGN_TOP_LEFT, x, y);
@@ -83,52 +83,51 @@ void lv_list_set_btn_text(lv_obj_t *btn, const char *text) {
   }
 }
 
-void lv_list_set_btn_icon(lv_obj_t *btn, const lv_img_dsc_t *icon) {
+void lv_list_set_btn_icon(lv_obj_t *btn, const lv_image_dsc_t *icon) {
 
   uint32_t i;
   for (i = 0; i < lv_obj_get_child_cnt(btn); i++) {
     lv_obj_t *child = lv_obj_get_child(btn, i);
-    if (lv_obj_check_type(child, &lv_img_class)) {
-      lv_img_set_src(child, icon);
+    if (lv_obj_check_type(child, &lv_image_class)) {
+      lv_image_set_src(child, icon);
     }
   }
 }
 
+lv_obj_t *lv_list_add_btn_mode(lv_obj_t *list, const void *icon, const char *txt, const lv_label_long_mode_t mode) {
+  LV_LOG_INFO("begin");
+  lv_obj_t *obj = lv_obj_class_create_obj(&lv_list_button_class, list);
+  lv_obj_class_init_obj(obj);
+  lv_obj_set_size(obj, LV_PCT(100), LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(obj, LV_FLEX_FLOW_ROW);
 
-lv_obj_t * lv_list_add_btn_mode(lv_obj_t * list, const void * icon, const char * txt, const lv_label_long_mode_t mode)
-{
-    LV_LOG_INFO("begin");
-    lv_obj_t * obj = lv_obj_class_create_obj(&lv_list_btn_class, list);
-    lv_obj_class_init_obj(obj);
-    lv_obj_set_size(obj, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(obj, LV_FLEX_FLOW_ROW);
-
-#if LV_USE_IMG == 1
-    if(icon) {
-        lv_obj_t * img = lv_img_create(obj);
-        lv_img_set_src(img, icon);
-    }
+#if LV_USE_IMAGE == 1
+  if (icon) {
+    lv_obj_t *img = lv_image_create(obj);
+    lv_image_set_src(img, icon);
+  }
 #endif
 
-    if(txt) {
-        lv_obj_t * label = lv_label_create(obj);
-        lv_label_set_text(label, txt);
-        lv_label_set_long_mode(label, mode);
-        lv_obj_set_flex_grow(label, 1);
-    }
+  if (txt) {
+    lv_obj_t *label = lv_label_create(obj);
+    lv_label_set_text(label, txt);
+    lv_label_set_long_mode(label, mode);
+    lv_obj_set_flex_grow(label, 1);
+  }
 
-    return obj;
+  return obj;
 }
 
-lv_obj_t *makeSpinner(lv_obj_t *parent, lv_coord_t x, lv_coord_t y, lv_coord_t size, uint16_t speed) {
-  lv_obj_t *spinner = lv_spinner_create(parent, speed, 60);
+lv_obj_t *makeSpinner(lv_obj_t *parent, int32_t x, int32_t y, int32_t size, uint16_t speed) {
+  lv_obj_t *spinner = lv_spinner_create(parent);
+  lv_spinner_set_anim_params(spinner, speed, 60);
   lv_obj_set_size(spinner, size, size);
   lv_obj_align(spinner, LV_ALIGN_CENTER, x, y);
   lv_obj_clear_flag(spinner, LV_OBJ_FLAG_HIDDEN);
   return spinner;
 }
 
-lv_obj_t *makeVerticalLayout(lv_obj_t *parent, lv_coord_t width, lv_coord_t height) {
+lv_obj_t *makeVerticalLayout(lv_obj_t *parent, int32_t width, int32_t height) {
   lv_obj_t *layout = lv_obj_create(parent);
   // Default alignment: top-left
   lv_obj_align(layout, LV_ALIGN_TOP_LEFT, 0, 0);
@@ -154,7 +153,7 @@ lv_obj_t *makeVerticalLayout(lv_obj_t *parent, lv_coord_t width, lv_coord_t heig
   return layout;
 }
 
-lv_obj_t *makeHorizontalLayout(lv_obj_t *parent, lv_coord_t width, lv_coord_t height) {
+lv_obj_t *makeHorizontalLayout(lv_obj_t *parent, int32_t width, int32_t height) {
   lv_obj_t *layout = lv_obj_create(parent);
 
   // Default alignment: top-left
@@ -195,7 +194,7 @@ lv_obj_t *makeTextArea(lv_obj_t *parent, const std::string &placeholder, bool pa
   return ta;
 }
 
-lv_obj_t *makeButtonSymbol(lv_obj_t *parent, const std::string &symbol, const lv_coord_t width, const lv_coord_t height,
+lv_obj_t *makeButtonSymbol(lv_obj_t *parent, const std::string &symbol, const int32_t width, const int32_t height,
                            bool checkable) {
   lv_obj_t *btn = lv_btn_create(parent);
   lv_obj_set_size(btn, 40, 40);
@@ -213,17 +212,16 @@ lv_obj_t *makeButtonSymbol(lv_obj_t *parent, const std::string &symbol, const lv
 lv_obj_t *makeKeyboard(lv_obj_t *parent) {
   lv_obj_t *keyboard = lv_keyboard_create(parent);
   lv_obj_add_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_set_size(keyboard, LV_HOR_RES, LV_VER_RES / 3);
+  lv_obj_set_size(keyboard, lv_display_get_horizontal_resolution(NULL), lv_display_get_vertical_resolution(NULL) / 3);
   lv_obj_align(keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
   return keyboard;
 }
 
-lv_obj_t *makeTabView(lv_obj_t *parent, lv_align_t align, int x_ofs, int y_ofs, int width, int height)
-{
-    lv_obj_t *tabview = lv_tabview_create(parent, LV_DIR_TOP, 40);
-    lv_obj_set_size(tabview, width, height);
-    lv_obj_align(tabview, align, x_ofs, y_ofs);
-    return tabview;
-}
+// lv_obj_t *makeTabView(lv_obj_t *parent, lv_align_t align, int x_ofs, int y_ofs, int width, int height) {
+//   lv_obj_t *tabview = lv_tabview_create(parent, LV_DIR_TOP, 40);
+//   lv_obj_set_size(tabview, width, height);
+//   lv_obj_align(tabview, align, x_ofs, y_ofs);
+//   return tabview;
+// }
 
 } // namespace display

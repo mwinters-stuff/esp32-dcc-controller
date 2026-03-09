@@ -24,8 +24,8 @@ private:
   lv_obj_t *label = nullptr;
   lv_obj_t *sub_label = nullptr;
   lv_obj_t *spinner = nullptr;
-  void *msg_subscribe_success = nullptr;
-  void *msg_subscribe_failed = nullptr;
+  lv_msg_sub_dsc_t *msg_subscribe_success = nullptr;
+  lv_msg_sub_dsc_t *msg_subscribe_failed = nullptr;
   esp_timer_handle_t failure_timer = nullptr;
 
 protected:

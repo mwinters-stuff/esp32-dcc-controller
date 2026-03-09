@@ -16,8 +16,8 @@ static const char *TAG = "DCC_CONNECT_SCREEN";
 
 void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
-  lv_obj_clean(lv_scr_act());
-  lvObj_ = lv_scr_act();
+  lv_obj_clean(lv_screen_active());
+  lvObj_ = lv_screen_active();
 
   detectedListItems.clear();
   currentButton = nullptr;
@@ -43,22 +43,22 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
 
   mdns_added_sub = lv_msg_subscribe(
       MSG_MDNS_DEVICE_ADDED,
-      [](void *s, lv_msg_t *msg) {
-        ConnectDCCScreen *self = static_cast<ConnectDCCScreen *>(msg->user_data);
+      [](lv_msg_t *msg) {
+        ConnectDCCScreen *self = static_cast<ConnectDCCScreen *>(lv_msg_get_user_data(msg));
         self->refreshMdnsList();
       },
       this);
   mdns_changed_sub = lv_msg_subscribe(
       MSG_MDNS_DEVICE_CHANGED,
-      [](void *s, lv_msg_t *msg) {
-        ConnectDCCScreen *self = static_cast<ConnectDCCScreen *>(msg->user_data);
+      [](lv_msg_t *msg) {
+        ConnectDCCScreen *self = static_cast<ConnectDCCScreen *>(lv_msg_get_user_data(msg));
         self->refreshMdnsList();
       },
       this);
 
   subscribe_failed = lv_msg_subscribe(
       MSG_WIFI_FAILED,
-      [](void *s, lv_msg_t *msg) {
+      [](lv_msg_t *msg) {
         ESP_LOGI(TAG, "Not connected to wifi");
         auto firstScreen = FirstScreen::instance();
         firstScreen->showScreen();
@@ -67,9 +67,9 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
 
   connect_success = lv_msg_subscribe(
       MSG_DCC_CONNECTION_SUCCESS,
-      [](void *s, lv_msg_t *msg) {
+      [](lv_msg_t *msg) {
         ESP_LOGI(TAG, "Connected to DCC server successfully");
-        // ConnectDCCScreen *self = static_cast<ConnectDCCScreen *>(msg->user_data);
+        // ConnectDCCScreen *self = static_cast<ConnectDCCScreen *>(lv_msg_get_user_data(msg));
       },
       this);
   refreshMdnsList();
@@ -275,9 +275,9 @@ void ConnectDCCScreen::button_listitem_click_event_callback(lv_event_t *e) {
 
     lv_obj_add_state(btn_connect, LV_STATE_DISABLED);
     // You can handle the list item click event here if needed
-    lv_obj_t *target = lv_event_get_target(e);
+    lv_obj_t *target = (lv_obj_t *)lv_event_get_target(e);
     /*The current target is always the container as the event is added to it*/
-    lv_obj_t *cont = lv_event_get_current_target(e);
+    lv_obj_t *cont = (lv_obj_t *)lv_event_get_current_target(e);
 
     /*If container was clicked do nothing*/
     if (target == cont) {

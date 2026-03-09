@@ -18,7 +18,7 @@ void WifiListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) 
   isCleanedUp = false;
 
   // Full-screen container
-  lv_obj_set_size(lvObj_, LV_HOR_RES, LV_VER_RES);
+  lv_obj_set_size(lvObj_, lv_display_get_horizontal_resolution(NULL), lv_display_get_vertical_resolution(NULL));
   lv_obj_clear_flag(lvObj_, LV_OBJ_FLAG_SCROLLABLE);
 
   // Title label at top
@@ -205,9 +205,9 @@ void WifiListScreen::button_listitem_click_event_callback(lv_event_t *e) {
 
     lv_obj_add_state(btn_connect, LV_STATE_DISABLED);
     // You can handle the list item click event here if needed
-    lv_obj_t *target = lv_event_get_target(e);
+    lv_obj_t *target = (lv_obj_t *)lv_event_get_target(e);
     /*The current target is always the container as the event is added to it*/
-    lv_obj_t *cont = lv_event_get_current_target(e);
+    lv_obj_t *cont = (lv_obj_t *)lv_event_get_current_target(e);
 
     /*If container was clicked do nothing*/
     if (target == cont) {

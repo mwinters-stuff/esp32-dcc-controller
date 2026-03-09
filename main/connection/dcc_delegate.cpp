@@ -2,6 +2,7 @@
 #include <esp_timer.h>
 
 #include "definitions.h"
+#include "ui/lv_msg.h"
 #include <lvgl.h>
 #include <stdio.h>
 

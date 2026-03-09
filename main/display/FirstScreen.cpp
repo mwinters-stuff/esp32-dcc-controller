@@ -11,7 +11,7 @@
 namespace display {
 static const char *TAG = "FIRST_SCREEN";
 
-void FirstScreen::wifi_connected_callback(void *s, lv_msg_t *msg) {
+void FirstScreen::wifi_connected_callback(lv_msg_t *msg) {
   if (isCleanedUp)
     return;
   enableButtons(true);
@@ -24,7 +24,7 @@ void FirstScreen::wifi_connected_callback(void *s, lv_msg_t *msg) {
   }
 }
 
-void FirstScreen::wifi_failed_callback(void *s, lv_msg_t *msg) {
+void FirstScreen::wifi_failed_callback(lv_msg_t *msg) {
   if (isCleanedUp)
     return;
   enableButtons(false);
@@ -35,7 +35,7 @@ void FirstScreen::wifi_failed_callback(void *s, lv_msg_t *msg) {
     lv_label_set_text(lbl_ip, "");
 }
 
-void FirstScreen::wifi_not_saved_callback(void *s, lv_msg_t *msg) {
+void FirstScreen::wifi_not_saved_callback(lv_msg_t *msg) {
   if (isCleanedUp)
     return;
   enableButtons(false);
@@ -141,7 +141,7 @@ void FirstScreen::cleanUp() {
 void FirstScreen::button_connect_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
-  if (e->code != LV_EVENT_CLICKED)
+  if (lv_event_get_code(e) != LV_EVENT_CLICKED)
     return;
   ESP_LOGI(TAG, "Connect button clicked!");
   cleanUp();
@@ -153,7 +153,7 @@ void FirstScreen::button_wifi_list_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
 
-  if (e->code != LV_EVENT_CLICKED)
+  if (lv_event_get_code(e) != LV_EVENT_CLICKED)
     return;
   ESP_LOGI(TAG, "Scan WiFi button clicked!");
   cleanUp();
@@ -165,7 +165,7 @@ void FirstScreen::button_calibrate_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
 
-  if (e->code != LV_EVENT_CLICKED)
+  if (lv_event_get_code(e) != LV_EVENT_CLICKED)
     return;
   ESP_LOGI(TAG, "Calibrate button clicked!");
   cleanUp();

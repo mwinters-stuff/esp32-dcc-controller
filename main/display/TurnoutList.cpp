@@ -33,8 +33,8 @@ void TurnoutListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScree
 
   subscribe_failed = lv_msg_subscribe(
       MSG_WIFI_FAILED,
-      [](void *s, lv_msg_t *msg) {
-        TurnoutListScreen *self = static_cast<TurnoutListScreen *>(msg->user_data);
+      [](lv_msg_t *msg) {
+        TurnoutListScreen *self = static_cast<TurnoutListScreen *>(lv_msg_get_user_data(msg));
         if (!self || self->isCleanedUp)
           return;
         ESP_LOGI(TAG, "Not connected to wifi");
@@ -45,12 +45,12 @@ void TurnoutListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScree
 
   turnout_changed_sub = lv_msg_subscribe(
       MSG_DCC_TURNOUT_CHANGED,
-      [](void *s, lv_msg_t *msg) {
-        TurnoutListScreen *self = static_cast<TurnoutListScreen *>(msg->user_data);
+      [](lv_msg_t *msg) {
+        TurnoutListScreen *self = static_cast<TurnoutListScreen *>(lv_msg_get_user_data(msg));
         if (!self || self->isCleanedUp)
           return;
         ESP_LOGI(TAG, "Turnout changed message received");
-        TurnoutActionData *data = static_cast<TurnoutActionData *>(const_cast<void *>(msg->payload));
+        TurnoutActionData *data = static_cast<TurnoutActionData *>(const_cast<void *>(lv_msg_get_payload(msg)));
         ESP_LOGI(TAG, "Turnout ID=%d changed to Thrown=%s", data->turnoutId, data->thrown ? "thrown" : "closed");
         auto item = self->getItemByTurnoutId(data->turnoutId);
         if (item) {
@@ -129,9 +129,9 @@ void TurnoutListScreen::button_listitem_click_event_callback(lv_event_t *e) {
     ESP_LOGI(TAG, "List item clicked");
 
     // You can handle the list item click event here if needed
-    lv_obj_t *target = lv_event_get_target(e);
+    lv_obj_t *target = (lv_obj_t *)lv_event_get_target(e);
     /*The current target is always the container as the event is added to it*/
-    lv_obj_t *cont = lv_event_get_current_target(e);
+    lv_obj_t *cont = (lv_obj_t *)lv_event_get_current_target(e);
 
     /*If container was clicked do nothing*/
     if (target == cont) {

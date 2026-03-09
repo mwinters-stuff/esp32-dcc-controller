@@ -14,6 +14,7 @@
 #include <nvs_handle.hpp>
 #include <string>
 #include <vector>
+#include "ui/lv_msg.h"
 
 static void wifi_connect_task(void *pvParameter) {
   auto *sp = static_cast<std::shared_ptr<utilities::wifi_credentials_t> *>(pvParameter);
