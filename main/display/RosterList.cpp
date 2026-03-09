@@ -69,11 +69,19 @@ void RosterListScreen::refreshList() {
   lv_obj_clean(list_roster);
   auto loco = DCCExController::Loco::getFirst();
   while (loco != nullptr) {
-    ESP_LOGI(TAG, "Roster ID=%d, Name=%s", loco->getAddress(), loco->getName());
+    if(loco->getSource() == DCCExController::LocoSource::LocoSourceRoster) {
+      const char *name = loco->getName();
+      if(name != nullptr && strlen(name) > 0) {
+      ESP_LOGI(TAG, "Roster ID=%d, Name=%s", loco->getAddress(), name);
 
-    auto listItem =
-        std::make_shared<RosterListItem>(list_roster, listItems.size(), loco->getAddress(), loco->getName());
-    listItems.push_back(listItem);
+      auto listItem = std::make_shared<RosterListItem>(list_roster, listItems.size(), loco->getAddress(), name);
+      listItems.push_back(listItem);
+      } else {
+        ESP_LOGI(TAG, "Roster ID=%d has no name, skipping", loco->getAddress());
+      }
+    } else {
+      ESP_LOGI(TAG, "Skipping non-roster loco with ID=%d", loco->getAddress());
+    }
     loco = loco->getNext();
   }
 }

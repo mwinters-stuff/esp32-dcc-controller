@@ -146,7 +146,7 @@ void DCCEXProtocol::sendCommand(char *cmd) {
 // sequentially request and get the required lists. To avoid overloading the buffer
 void DCCEXProtocol::getLists(bool rosterRequired, bool turnoutListRequired, bool routeListRequired,
                              bool turntableListRequired) {
-  ESP_LOGI(TAG, "getLists()");
+  // ESP_LOGI(TAG, "getLists()");
   if (!_receivedLists) {
     if (rosterRequired && !_rosterRequested) {
       _getRoster();
@@ -175,7 +175,7 @@ void DCCEXProtocol::getLists(bool rosterRequired, bool turnoutListRequired, bool
       }
     }
   }
-  ESP_LOGI(TAG, "getLists(): end");
+  // ESP_LOGI(TAG, "getLists(): end");
 }
 
 bool DCCEXProtocol::receivedLists() { return _receivedLists; }
