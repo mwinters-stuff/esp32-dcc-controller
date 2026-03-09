@@ -72,6 +72,7 @@ void FirstScreen::disableButtons() {
 
 void FirstScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
+  lv_obj_clean(lvObj_);
 
   // Title Label
   lbl_title = makeLabel(lvObj_, "DCC Controller", LV_ALIGN_TOP_MID, 0, 10, "label.title", &lv_font_montserrat_30);

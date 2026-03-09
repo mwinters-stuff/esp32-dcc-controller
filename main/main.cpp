@@ -33,14 +33,12 @@ static bool displaySleeping = false;
 constexpr uint32_t INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
 // --- FADE EFFECT ---
-void fade_brightness(uint8_t from, uint8_t to, int duration_ms)
-{
+void fade_brightness(uint8_t from, uint8_t to, int duration_ms) {
   const int steps = 25; // smoother
   float step_time = (float)duration_ms / steps;
   float delta = (to - from) / (float)steps;
 
-  for (int i = 0; i <= steps; ++i)
-  {
+  for (int i = 0; i <= steps; ++i) {
     uint8_t val = static_cast<uint8_t>(from + delta * i);
     DisplayManager::gfx.setBrightness(val);
     vTaskDelay(pdMS_TO_TICKS(step_time));
@@ -48,23 +46,18 @@ void fade_brightness(uint8_t from, uint8_t to, int duration_ms)
 }
 
 // --- Display control helpers ---
-void display_set_sleep(bool sleep)
-{
-  if (sleep)
-  {
+void display_set_sleep(bool sleep) {
+  if (sleep) {
     ESP_LOGI(TAG, "Display sleeping...");
     fade_brightness(255, 0, 800); // fade out
-  }
-  else
-  {
+  } else {
     ESP_LOGI(TAG, "Display waking...");
     fade_brightness(0, 255, 600); // fade in
   }
 }
 
 // --- Touchpad Read Callback ---
-void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
-{
+void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data) {
   lv_coord_t x = 0;
   lv_coord_t y = 0;
   bool touched = DisplayManager::gfx.getTouch(&x, &y);
@@ -75,8 +68,7 @@ void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
   constexpr bool FLIP_Y = true;
   constexpr bool SWAP_XY = false;
 
-  if (touched)
-  {
+  if (touched) {
     lv_coord_t tx = x;
     lv_coord_t ty = y;
 
@@ -91,16 +83,13 @@ void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
     data->point.y = ty;
     data->state = LV_INDEV_STATE_PR;
 
-    if (displaySleeping)
-    {
+    if (displaySleeping) {
       display_set_sleep(false);
       displaySleeping = false;
       data->state = LV_INDEV_STATE_REL;
       lastActivityTime = millis();
     }
-  }
-  else
-  {
+  } else {
     data->state = LV_INDEV_STATE_REL;
   }
 }
@@ -109,8 +98,7 @@ void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
 auto manualCalibration = display::ManualCalibration::instance();
 auto firstScreen = display::FirstScreen::instance();
 
-void setup()
-{
+void setup() {
   ESP_LOGI(TAG, "ES32 DCC Controller");
 
   display::calibrateState calibrated = manualCalibration->loadCalibrationFromNVS();
@@ -122,8 +110,7 @@ void setup()
   DisplayManager::gfx.fillScreen(TFT_BLACK);
   DisplayManager::gfx.setBrightness(255); // ensure display on at start
 
-  if (calibrated == display::calibrateState::calibrate)
-  {
+  if (calibrated == display::calibrateState::calibrate) {
     manualCalibration->calibrate();
     return;
   }
@@ -152,14 +139,24 @@ void setup()
   auto theme = std::make_shared<ui::LvglTheme>("Default");
   ui::LvglTheme::setActive(theme);
 
-  switch (calibrated)
-  {
+  // Global handler: whenever the DCC server drops, return to the home screen
+  // regardless of which screen is currently active.
+  lv_msg_subscribe(
+      MSG_DCC_DISCONNECTED,
+      [](void *, lv_msg_t *) {
+        display::FirstScreen::instance()->showScreen();
+      },
+      nullptr);
+
+  switch (calibrated) {
   case display::calibrateState::calibrated:
-    xTaskCreate([](void *parameters){
-      vTaskDelay(pdMS_TO_TICKS(2000));
-      utilities::WifiHandler::instance()->init_wifi();
-      vTaskDelete(nullptr);
-    }, "wifi_init_del", 4096, nullptr, tskIDLE_PRIORITY + 1, nullptr);
+    xTaskCreate(
+        [](void *parameters) {
+          vTaskDelay(pdMS_TO_TICKS(2000));
+          utilities::WifiHandler::instance()->init_wifi();
+          vTaskDelete(nullptr);
+        },
+        "wifi_init_del", 4096, nullptr, tskIDLE_PRIORITY + 1, nullptr);
     firstScreen->showScreen();
     break;
   case display::calibrateState::notCalibrated:
@@ -177,22 +174,17 @@ void setup()
 }
 
 // Called by a periodic timer
-void lv_tick_task(void *arg)
-{
+void lv_tick_task(void *arg) {
   (void)arg;
   lv_tick_inc(1); // exactly 1ms increment
 }
 
-extern "C" void app_main()
-{
+extern "C" void app_main() {
   esp_err_t ret = nvs_flash_init();
-  if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
-  {
+  if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
     ESP_ERROR_CHECK(nvs_flash_erase());
     ESP_ERROR_CHECK(nvs_flash_init());
-  }
-  else
-  {
+  } else {
     ESP_ERROR_CHECK(ret);
   }
 
@@ -209,15 +201,13 @@ extern "C" void app_main()
   ESP_ERROR_CHECK(esp_timer_create(&lv_tick_timer_args, &lv_tick_timer));
   ESP_ERROR_CHECK(esp_timer_start_periodic(lv_tick_timer, 1000)); // 1000 µs = 1ms
 
-  while (true)
-  {
+  while (true) {
     lv_timer_handler();
     vTaskDelay(pdMS_TO_TICKS(10));
 
     // --- Inactivity check ---
     uint32_t now = millis();
-    if (!displaySleeping && (now - lastActivityTime > INACTIVITY_TIMEOUT_MS))
-    {
+    if (!displaySleeping && (now - lastActivityTime > INACTIVITY_TIMEOUT_MS)) {
       display_set_sleep(true);
       displaySleeping = true;
     }

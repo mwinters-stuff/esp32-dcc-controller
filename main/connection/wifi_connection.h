@@ -8,12 +8,12 @@
 #include <esp_timer.h> // For get_absolute_time(), to_ms_since_boot()
 #include <lwip/priv/tcp_priv.h>
 #include <lwip/tcp.h>
+#include <lwip/tcpip.h>
 #include <stdarg.h>
 
 // Declare a queue handle
 namespace utilities {
 extern QueueHandle_t tcp_fail_queue;
-
 
 class TCPSocketStream : public DCCExController::DCCStream {
 private:
@@ -59,7 +59,6 @@ private:
 public:
   explicit TCPSocketStream(struct tcp_pcb *pcb) : pcb(pcb), recv_buffer(nullptr) {
     // Create a queue (example)
-    
 
     tcp_recv(pcb, recv_callback);
     tcp_arg(pcb, this);
@@ -77,20 +76,19 @@ public:
 
   // Read a single byte from the socket
   int read() {
+    LOCK_TCPIP_CORE();
     if (recv_buffer == nullptr) {
+      UNLOCK_TCPIP_CORE();
       return -1; // No data
     }
     uint8_t byte = *static_cast<uint8_t *>(recv_buffer->payload);
     pbuf_remove_header(recv_buffer, 1);
     if (recv_buffer->len == 0) {
-      // printf("Freeing buffer %d %d %d\n", recv_buffer->len, recv_buffer->tot_len, recv_buffer->ref);
-      //  fflush(stdout);
       struct pbuf *next = recv_buffer->next;
       pbuf_free(recv_buffer);
       recv_buffer = next;
-      // printf("Buffer freed\n");
-      //  fflush(stdout);
     }
+    UNLOCK_TCPIP_CORE();
     return byte;
   }
 
@@ -99,16 +97,19 @@ public:
     if (failed) {
       return -1; // Already failed
     }
+    LOCK_TCPIP_CORE();
     err_t err = tcp_write(pcb, buffer, size, TCP_WRITE_FLAG_COPY);
     if (err == ERR_OK) {
       tcp_output(pcb);
+      UNLOCK_TCPIP_CORE();
       return size;
     }
+    UNLOCK_TCPIP_CORE();
     printf("Error writing to TCP socket: %d\n", err);
     failed = true;
     // Notify main core of TCP failure
     xQueueSendToBack(tcp_fail_queue, &err, portMAX_DELAY);
-    return err;                           // Error
+    return err; // Error
   }
 
   // No-op for sockets (no explicit flushing needed)
@@ -178,12 +179,16 @@ public:
 
   // Destructor to close the socket
   ~TCPSocketStream() {
+    LOCK_TCPIP_CORE();
     if (pcb != nullptr) {
       tcp_close(pcb);
+      pcb = nullptr;
     }
     if (recv_buffer != nullptr) {
       pbuf_free(recv_buffer);
+      recv_buffer = nullptr;
     }
+    UNLOCK_TCPIP_CORE();
   }
 };
 
@@ -246,5 +251,5 @@ public:
   // Destructor to close the socket
   ~LoggingStream() {}
 };
-}
+} // namespace utilities
 #endif

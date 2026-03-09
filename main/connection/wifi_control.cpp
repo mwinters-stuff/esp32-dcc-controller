@@ -11,6 +11,7 @@
 #include <DCCEXProtocol.h>
 #include <esp_log.h>
 #include <esp_timer.h>
+#include <lvgl.h>
 #include <lwip/apps/mdns.h>
 
 namespace utilities {
@@ -211,8 +212,7 @@ void WifiControl::loop() {
     failError(err);
     disconnect();
     ESP_LOGI(TAG, "Disconnected from server due to error");
-    // displayControls->showConnectionFailed();
-    // displayControls->showDCCConnectionMenu();
+    lv_async_call([](void *) { lv_msg_send(MSG_DCC_DISCONNECTED, nullptr); }, nullptr);
   }
 }
 

@@ -141,14 +141,7 @@ void ConnectDCCScreen::cleanUp() {
   resetMsgHandlers();
   detectedListItems.clear();
 
-  lv_obj_clean(lbl_title);
-  lv_obj_clean(list_auto);
-  lv_obj_clean(btn_back);
-  lv_obj_clean(btn_save);
-  lv_obj_clean(btn_connect);
-  if (currentButton)
-    lv_obj_clean(currentButton);
-  // lv_obj_clean(savedListItem);
+  lv_obj_clean(lvObj_);
 
   lbl_title = nullptr;
   list_auto = nullptr;
@@ -157,7 +150,6 @@ void ConnectDCCScreen::cleanUp() {
   btn_connect = nullptr;
   currentButton = nullptr;
   savedListItem = nullptr;
-  // lv_obj_clean(lvObj_);
 }
 
 void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dccItem) {
@@ -211,6 +203,7 @@ void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dc
           [](void *cbArg) {
             auto *args = static_cast<ConnectTaskArgs *>(cbArg);
             lv_msg_send(MSG_DCC_CONNECTION_SUCCESS, NULL);
+            args->self->cleanUp();
             auto DCCMenuScreen = DCCMenu::instance();
             DCCMenuScreen->setConnectedServer(args->ip, args->port, args->instance);
             DCCMenuScreen->showScreen();
@@ -268,7 +261,7 @@ void ConnectDCCScreen::button_back_callback(lv_event_t *e) {
     return;
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     if (auto screen = parentScreen_.lock()) {
-      resetMsgHandlers();
+      cleanUp();
       screen->showScreen();
     }
   }
