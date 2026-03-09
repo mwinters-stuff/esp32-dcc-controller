@@ -12,16 +12,16 @@ dependencies:
     - esp32s3
     - esp32c3
     version: 9758f1b4c604f96ec4124e7e331795c293572883
-  LovyanGFX_dev:
-    component_hash: 0de4f2fe296403116df4f27fcc0e27efa1d1cca7346d0258f6abfaee2d054864
+  LovyanGFX:
+    component_hash: 4b16f8e694fa4868f1312a4d593f5e4eab57e0693b050e1d08220ae8dad16520
     dependencies: []
     source:
       git: https://github.com/lovyan03/LovyanGFX.git
       path: .
       type: git
-    version: 2e0dc974a9b6521bf155afb53a9a92a623a60803
+    version: 6f6e9a052fc719ecb2b42640b0207215050d2560
   espressif/mdns:
-    component_hash: 5c148bc0996305bcf111c465bba021a8155d4247b0d9353c39da9b44a91ca381
+    component_hash: 7c0fa01a1cd0e72a87ec1928c3b661c0a3a9034a6d3a69dcf4850db8c6f272db
     dependencies:
     - name: idf
       require: private
@@ -29,7 +29,7 @@ dependencies:
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 1.9.0
+    version: 1.10.1
   idf:
     source:
       type: idf
@@ -43,10 +43,10 @@ dependencies:
     version: 8.4.0
 direct_dependencies:
 - DCCEXProtocol
-- LovyanGFX_dev
+- LovyanGFX
 - espressif/mdns
 - idf
 - lvgl/lvgl
-manifest_hash: 9b727d368b4be3fc3465e170d98652874cfb411c03da1a82de9c628898360fde
+manifest_hash: abca8e7c8867b9c1ff6b4bbb4de2ba9e44381470f6f3e3e047e353c75a79004e
 target: esp32s3
 version: 2.0.0

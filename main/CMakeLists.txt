@@ -19,7 +19,7 @@ idf_component_register(
     nvs_flash
     spi_flash
     lvgl__lvgl
-    LovyanGFX_dev
+    LovyanGFX
     DCCEXProtocol
   INCLUDE_DIRS
     "."
