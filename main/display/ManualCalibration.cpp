@@ -30,7 +30,10 @@ void ManualCalibration::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScree
   }
 }
 
-void ManualCalibration::cleanUp() { lv_obj_clean(lvObj_); }
+void ManualCalibration::cleanUp() { 
+
+  lv_obj_clean(lvObj_); 
+}
 
 void ManualCalibration::rebootToCalibrate() {
   esp_err_t err;
@@ -150,6 +153,7 @@ void ManualCalibration::button_back_event_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     LV_LOG_USER("Back button clicked");
     if (auto screen = parentScreen_.lock()) {
+      cleanUp();
       screen->showScreen();
     }
   }

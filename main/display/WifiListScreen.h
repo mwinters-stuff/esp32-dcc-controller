@@ -1,9 +1,9 @@
 #pragma once
+#include "WifiListItem.h"
 #include <esp_wifi.h>
 #include <memory>
 #include <utility>
 #include <vector>
-#include "WifiListItem.h"
 
 #include "Screen.h"
 
@@ -55,13 +55,13 @@ protected:
 
 private:
   TaskHandle_t scanTaskHandle = 0;
-  lv_obj_t *_lv_obj = nullptr;
-  lv_obj_t * lbl_title;
-  lv_obj_t * btn_back;
-  lv_obj_t * btn_connect;
-  lv_obj_t * list_view;
-  lv_obj_t * spinner;
-  lv_obj_t * currentButton = nullptr;
+  bool isCleanedUp = false;
+  lv_obj_t *lbl_title = nullptr;
+  lv_obj_t *btn_back = nullptr;
+  lv_obj_t *btn_connect = nullptr;
+  lv_obj_t *list_view = nullptr;
+  lv_obj_t *spinner = nullptr;
+  lv_obj_t *currentButton = nullptr;
 
   std::vector<std::shared_ptr<WifiListItem>> items;
 

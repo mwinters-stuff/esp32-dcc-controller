@@ -2,13 +2,16 @@
 
 #include <lwip/ip_addr.h>
 #include <lwip/tcp.h>
+#include <lwip/tcpip.h>
 
 // #include "../config.h"
-#include "lwip/apps/mdns.h"
+#include "definitions.h"
+#include "freertos/task.h"
 #include "wifi_connection.h"
 #include <DCCEXProtocol.h>
 #include <esp_log.h>
 #include <esp_timer.h>
+#include <lwip/apps/mdns.h>
 
 namespace utilities {
 // Define the static instance variable
@@ -39,13 +42,12 @@ void wifi_loop_task(void *arg) {
 WifiControl::WifiControl() { init(); }
 
 void WifiControl::init() {
-  xTaskCreatePinnedToCore(wifi_loop_task,   // Your task function
-                          "wifi_loop_task", // Name
-                          4096,             // Stack size
-                          this,             // Parameter
-                          5,                // Priority
-                          nullptr,          // Task handle
-                          1                 // Core 1
+  xTaskCreate(wifi_loop_task,   // Your task function
+              "wifi_loop_task", // Name
+              4096,             // Stack size
+              this,             // Parameter
+              tskIDLE_PRIORITY, // Priority
+              nullptr           // Task handle
   );
   // if (!wifi_loop_timer) {
   //   esp_timer_create_args_t timer_args = {
@@ -117,17 +119,23 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
     return;
   }
 
+  LOCK_TCPIP_CORE();
   struct tcp_pcb *pcb = tcp_new();
+  UNLOCK_TCPIP_CORE();
   if (pcb == nullptr) {
     printf("Failed to create PCB\n");
     return;
   }
 
   // Attempt to connect
+  LOCK_TCPIP_CORE();
   err_t err = tcp_connect(pcb, &server_addr, port, nullptr);
+  UNLOCK_TCPIP_CORE();
   if (err != ERR_OK) {
     ESP_LOGI(TAG, "Failed to initiate connection: %d\n", err);
+    LOCK_TCPIP_CORE();
     tcp_close(pcb);
+    UNLOCK_TCPIP_CORE();
     return;
   }
 
@@ -137,13 +145,16 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
   const uint32_t timeout_ms = 10000;
   uint32_t start_time = esp_timer_get_time() / 1000; // Convert to milliseconds;
   while (currentConnectionState == CONNECTING) {
-    // cyw43_arch_poll();
+    // Read PCB state under the lwIP core lock to avoid a data race with the lwIP task
+    LOCK_TCPIP_CORE();
+    enum tcp_state state = pcb->state;
 
-    // Check the connection state
-    if (pcb->state == ESTABLISHED) {
+    if (state == ESTABLISHED) {
       ESP_LOGI(TAG, "Connected to server: %s:%d\n", ipaddr_ntoa(&pcb->remote_ip), pcb->remote_port);
-
+      // TCPSocketStream constructor calls tcp_recv/tcp_arg — must stay inside the lock
       stream = new TCPSocketStream(pcb);
+      UNLOCK_TCPIP_CORE();
+
       logStream = new LoggingStream(nullptr);
       dccExProtocol = std::make_shared<DCCExController::DCCEXProtocol>();
 
@@ -151,21 +162,26 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
       dccExProtocol->setDelegate(&dccDelegate);
       dccExProtocol->connect(stream);
       dccExProtocol->enableHeartbeat();
+      lastGetListsMs = esp_timer_get_time() / 1000;
       currentConnectionState = CONNECTED;
-    } else if (pcb->state == CLOSED || pcb->state == TIME_WAIT || pcb->state == FIN_WAIT_1 ||
-               pcb->state == FIN_WAIT_2) {
+    } else if (state == CLOSED || state == TIME_WAIT || state == FIN_WAIT_1 || state == FIN_WAIT_2) {
       printf("Connection failed or closed\n");
       ESP_LOGI(TAG, "failed");
       tcp_close(pcb);
+      UNLOCK_TCPIP_CORE();
       currentConnectionState = DISCONNECTED;
       return;
+    } else {
+      UNLOCK_TCPIP_CORE();
     }
 
     // Timeout check
     uint32_t now = esp_timer_get_time() / 1000; // Convert to milliseconds
     if (now - start_time > timeout_ms) {
       ESP_LOGI(TAG, "Connection timed out after 10 seconds");
+      LOCK_TCPIP_CORE();
       tcp_close(pcb);
+      UNLOCK_TCPIP_CORE();
       return;
     }
 
@@ -179,7 +195,11 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
 void WifiControl::loop() {
   if (dccExProtocol) {
     dccExProtocol->check();
-    dccExProtocol->getLists(true, true, true, true);
+    uint64_t now_ms = esp_timer_get_time() / 1000;
+    if (now_ms - lastGetListsMs >= 1000) {
+      dccExProtocol->getLists(true, true, true, true);
+      lastGetListsMs = now_ms;
+    }
   }
 
   if (stream) {
@@ -198,9 +218,7 @@ void WifiControl::loop() {
 
 void WifiControl::startConnectToServer(const char *server_ip, uint16_t port) {
   auto *args = new ConnectTaskArgs{this, server_ip, port};
-  xTaskCreatePinnedToCore(&WifiControl::connect_task, "connect_task", 4096, args, 5, nullptr,
-                          1 // Core 1
-  );
+  xTaskCreate(&WifiControl::connect_task, "connect_task", 4096, args, tskIDLE_PRIORITY, nullptr);
 }
 
 void WifiControl::disconnect() {

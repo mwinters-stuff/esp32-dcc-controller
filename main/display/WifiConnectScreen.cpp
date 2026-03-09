@@ -3,6 +3,8 @@
 #include "LvglWrapper.h"
 #include "definitions.h"
 #include "utilities/WifiHandler.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <nvs_flash.h>
 #include <nvs_handle.hpp>
 
@@ -14,6 +16,8 @@ namespace display {
 static const char *TAG = "WIFI_CONNECT_SCREEN";
 
 void WifiConnectScreen::wifi_connected_callback(void *s, lv_msg_t *msg) {
+  if (isCleanedUp)
+    return;
   lv_label_set_text(lbl_status, "Connected!");
   lv_obj_clear_flag(lbl_spinner, LV_OBJ_FLAG_HIDDEN);
 
@@ -21,10 +25,19 @@ void WifiConnectScreen::wifi_connected_callback(void *s, lv_msg_t *msg) {
   lv_timer_create(
       [](lv_timer_t *t) {
         WifiConnectScreen *self = static_cast<WifiConnectScreen *>(t->user_data);
-        self->unsubscribeAll();
+        if (!self || self->isCleanedUp)
+          return;
+        self->cleanUp();
         FirstScreen::instance()->showScreen();
 
-        ESP_ERROR_CHECK(utilities::WifiHandler::instance()->saveConfiguration());
+        // Offload NVS flash write to a background task — it blocks for several ms
+        // and must not run inside the LVGL timer handler.
+        xTaskCreate(
+            [](void *) {
+              utilities::WifiHandler::instance()->saveConfiguration();
+              vTaskDelete(nullptr);
+            },
+            "wifi_save_cfg", 2048, nullptr, tskIDLE_PRIORITY, nullptr);
 
         lv_timer_del(t);
       },
@@ -32,18 +45,24 @@ void WifiConnectScreen::wifi_connected_callback(void *s, lv_msg_t *msg) {
 }
 
 void WifiConnectScreen::wifi_failed_callback(void *s, lv_msg_t *msg) {
+  if (isCleanedUp)
+    return;
   lv_label_set_text(lbl_status, "Connection Failed");
   lv_obj_add_flag(lbl_spinner, LV_OBJ_FLAG_HIDDEN);
   lv_obj_clear_flag(kb_keyboard, LV_OBJ_FLAG_HIDDEN);
 }
 
 void WifiConnectScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
+  isCleanedUp = false;
   createScreen();
   wifi_connected_sub = lv_msg_subscribe(MSG_WIFI_CONNECTED, &WifiConnectScreen::wifi_connected_trampoline, this);
   wifi_failed_sub = lv_msg_subscribe(MSG_WIFI_FAILED, &WifiConnectScreen::wifi_failed_trampoline, this);
 }
 
-void WifiConnectScreen::unsubscribeAll() {
+void WifiConnectScreen::cleanUp() {
+  ESP_LOGI(TAG, "WifiConnectScreen cleaned up");
+  isCleanedUp = true;
+
   if (wifi_connected_sub) {
     lv_msg_unsubscribe(wifi_connected_sub);
     wifi_connected_sub = nullptr;
@@ -52,10 +71,17 @@ void WifiConnectScreen::unsubscribeAll() {
     lv_msg_unsubscribe(wifi_failed_sub);
     wifi_failed_sub = nullptr;
   }
-}
 
-void WifiConnectScreen::cleanUp() {
-  ESP_LOGI(TAG, "WifiConnectScreen cleaned up");
+  lbl_title = nullptr;
+  lbl_subtitle = nullptr;
+  vert_container = nullptr;
+  lbl_pwd = nullptr;
+  pwd_container = nullptr;
+  ta_password = nullptr;
+  bs_password_show = nullptr;
+  lbl_status = nullptr;
+  lbl_spinner = nullptr;
+  kb_keyboard = nullptr;
   lv_obj_clean(lvObj_);
 }
 
@@ -105,6 +131,8 @@ void WifiConnectScreen::createScreen() {
 }
 
 void WifiConnectScreen::event_password_show_callback(lv_event_t *e) {
+  if (isCleanedUp)
+    return;
   if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
     lv_obj_t *btn = lv_event_get_target(e);
     bool checked = lv_obj_has_state(btn, LV_STATE_CHECKED);
@@ -117,6 +145,8 @@ void WifiConnectScreen::event_password_show_callback(lv_event_t *e) {
 }
 
 void WifiConnectScreen::event_keyboard_callback(lv_event_t *e) {
+  if (isCleanedUp)
+    return;
   lv_event_code_t code = lv_event_get_code(e);
 
   if (code == LV_EVENT_READY) {
@@ -135,7 +165,7 @@ void WifiConnectScreen::event_keyboard_callback(lv_event_t *e) {
   } else if (code == LV_EVENT_CANCEL) {
     // Close button pressed (×)
     lv_obj_add_flag(kb_keyboard, LV_OBJ_FLAG_HIDDEN);
-    unsubscribeAll();
+    cleanUp();
     ESP_LOGI(TAG, "Connection cancelled for SSID: %s", ssid.c_str());
     if (auto screen = parentScreen_.lock()) {
       screen->showScreen();

@@ -16,8 +16,9 @@
 #include <vector>
 
 static void wifi_connect_task(void *pvParameter) {
-  utilities::wifi_credentials_t *creds = (utilities::wifi_credentials_t *)pvParameter;
-  creds->wifiHandler->WifiConnectTask(pvParameter);
+  auto *sp = static_cast<std::shared_ptr<utilities::wifi_credentials_t> *>(pvParameter);
+  (*sp)->wifiHandler->WifiConnectTask(sp->get());
+  delete sp;
 }
 
 namespace utilities {
@@ -54,12 +55,16 @@ void WifiHandler::wifi_event_handler(void *arg, esp_event_base_t event_base, int
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
     ESP_LOGI(TAG, "WifiEventHandler: WIFI_EVENT_STA_DISCONNECTED");
     xEventGroupSetBits(wifi_event_group, WIFI_FAIL_BIT);
-    lv_msg_send(MSG_WIFI_FAILED, NULL);
+    lv_async_call([](void *){
+      lv_msg_send(MSG_WIFI_FAILED, NULL);
+    }, nullptr);
     self->stopMdnsSearchLoop();
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     ESP_LOGI(TAG, "WifiEventHandler: IP_EVENT_STA_GOT_IP");
     xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
-    lv_msg_send(MSG_WIFI_CONNECTED, NULL);
+    lv_async_call([](void *){
+      lv_msg_send(MSG_WIFI_CONNECTED, NULL);
+    }, nullptr);
     xTaskCreate(
         [](void *parameters) {
           WifiHandler *self = static_cast<WifiHandler *>(parameters);
@@ -135,10 +140,13 @@ void WifiHandler::loadAndConnect() {
     return;
   }
 
-  xTaskCreate(&::wifi_connect_task, "wifi_connect_task", 4096, creds.get(), 5, nullptr);
+  xTaskCreate(&::wifi_connect_task, "wifi_connect_task", 4096,
+              new std::shared_ptr<wifi_credentials_t>(creds), tskIDLE_PRIORITY, nullptr);
 }
 
-void WifiHandler::noConnectionSaved() { lv_msg_send(MSG_WIFI_NOT_SAVED, NULL); }
+void WifiHandler::noConnectionSaved() {
+  lv_async_call([](void *) { lv_msg_send(MSG_WIFI_NOT_SAVED, NULL); }, nullptr);
+}
 
 void WifiHandler::WifiConnectTask(void *pvParameter) {
 
@@ -163,7 +171,7 @@ void WifiHandler::WifiConnectTask(void *pvParameter) {
   esp_err_t err = esp_wifi_connect();
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "wifi connect failed: %s", esp_err_to_name(err));
-    lv_msg_send(MSG_WIFI_FAILED, NULL);
+    lv_async_call([](void *) { lv_msg_send(MSG_WIFI_FAILED, NULL); }, nullptr);
     vTaskDelete(NULL);
     return;
   }
@@ -184,7 +192,8 @@ void WifiHandler::create_wifi_connect_task(const char *ssid, const char *passwor
   strncpy(creds->password, password, sizeof(creds->password));
   creds->wifiHandler = shared_from_this();
 
-  xTaskCreate(&::wifi_connect_task, "wifi_connect_task", 4096, creds.get(), 5, nullptr);
+  xTaskCreate(&::wifi_connect_task, "wifi_connect_task", 4096,
+              new std::shared_ptr<utilities::wifi_credentials_t>(creds), tskIDLE_PRIORITY, nullptr);
 }
 
 bool WifiHandler::isConnected() { return connected; }
@@ -208,7 +217,8 @@ std::string WifiHandler::getIpAddress() const {
 // New: start an mDNS search for _withrottle and populate withrottle_devices
 void WifiHandler::searchMdnsWithrottle(uint32_t timeout_ms /*= 3000*/, size_t max_results /*= 10*/) {
   ESP_LOGI(TAG, "Starting mDNS search for service '_withrottle'");
-  ESP_ERROR_CHECK(mdns_init());
+  // mdns_init() is called once in startMdnsSearchLoop(). Calling it again here
+  // returns ESP_ERR_INVALID_STATE, which would abort via ESP_ERROR_CHECK.
 
   // Query for PTR records of the service; service string usually includes proto, e.g. "_withrottle._tcp".
   const char *service = "_withrottle";
@@ -239,6 +249,9 @@ static void mdns_search_task_fn(void *arg) {
   uint32_t qtimeout = p->query_timeout_ms;
   size_t maxr = p->max_results;
 
+  ESP_LOGI(TAG, "mDNS search loop started with interval=%u ms, query_timeout=%u ms, max_results=%u", interval, qtimeout,
+           (unsigned)maxr);
+
   // loop until stopped
   while (s_mdns_search_running) {
     self->searchMdnsWithrottle(qtimeout, maxr);
@@ -246,12 +259,16 @@ static void mdns_search_task_fn(void *arg) {
     for (uint32_t waited = 0; waited < interval && s_mdns_search_running; waited += 200) {
       vTaskDelay(pdMS_TO_TICKS(200));
     }
+    if (s_mdns_search_running)
+      ESP_LOGI(TAG, "mDNS search again");
   }
 
+  ESP_LOGI(TAG, "mDNS search task exiting 1");
   // cleanup
   s_mdns_search_task = nullptr;
   free(p);
   vTaskDelete(nullptr);
+  ESP_LOGI(TAG, "mDNS search task exiting 2");
 }
 
 // Start continuous mDNS search loop. Safe to call repeatedly.
@@ -285,7 +302,7 @@ void WifiHandler::startMdnsSearchLoop(uint32_t interval_ms /*= 5000*/, uint32_t 
   p->query_timeout_ms = query_timeout_ms;
   p->max_results = max_results;
 
-  BaseType_t ok = xTaskCreate(&mdns_search_task_fn, "mdns_search", 4096, p, tskIDLE_PRIORITY + 1, &s_mdns_search_task);
+  BaseType_t ok = xTaskCreate(&mdns_search_task_fn, "mdns_search", 6144, p, tskIDLE_PRIORITY + 1, &s_mdns_search_task);
   if (ok != pdPASS) {
     ESP_LOGE(TAG, "Failed to create mdns_search task");
     s_mdns_search_running = false;
@@ -371,7 +388,7 @@ void WifiHandler::addWithrottleDeviceFromResult(mdns_result_t *r) {
       existing.ip = dev.ip.empty() ? existing.ip : dev.ip;
       existing.txt = dev.txt.empty() ? existing.txt : dev.txt;
       ESP_LOGI(TAG, "mDNS: updated existing device (hostname): %s", existing.hostname.c_str());
-      lv_msg_send(MSG_MDNS_DEVICE_CHANGED, NULL);
+      lv_async_call([](void *) { lv_msg_send(MSG_MDNS_DEVICE_CHANGED, NULL); }, nullptr);
       return;
     }
 
@@ -382,14 +399,14 @@ void WifiHandler::addWithrottleDeviceFromResult(mdns_result_t *r) {
       existing.hostname = existing.hostname.empty() ? dev.hostname : existing.hostname;
       existing.txt = dev.txt.empty() ? existing.txt : dev.txt;
       ESP_LOGI(TAG, "mDNS: updated existing device (ip): %s", existing.ip.c_str());
-      lv_msg_send(MSG_MDNS_DEVICE_CHANGED, NULL);
+      lv_async_call([](void *) { lv_msg_send(MSG_MDNS_DEVICE_CHANGED, NULL); }, nullptr);
       return;
     }
   }
 
   // not found => append
   withrottle_devices.push_back(std::move(dev));
-  lv_msg_send(MSG_MDNS_DEVICE_ADDED, NULL);
+  lv_async_call([](void *) { lv_msg_send(MSG_MDNS_DEVICE_ADDED, NULL); }, nullptr);
   ESP_LOGI(TAG, "mDNS: adding new device (ip): %s devices: %d", dev.ip.c_str(), (int)withrottle_devices.size());
 }
 

@@ -1,13 +1,42 @@
 #include "dcc_delegate.h"
 #include <esp_timer.h>
 
-#include <stdio.h>
-// #include "loco_controller.h"
-// #include "display/WaitingScreen.h"
 #include "definitions.h"
 #include <lvgl.h>
+#include <stdio.h>
 
-// using namespace display;
+// lv_msg_send must be called from the LVGL task. These helpers schedule the
+// send via lv_async_call so that delegate callbacks (which fire from wifi_loop_task)
+// are safe to use.
+namespace {
+
+void async_send(uint32_t msg_id) {
+  auto *id = new uint32_t(msg_id);
+  lv_async_call(
+      [](void *arg) {
+        auto *id = static_cast<uint32_t *>(arg);
+        lv_msg_send(*id, nullptr);
+        delete id;
+      },
+      id);
+}
+
+void async_send_turnout(uint32_t msg_id, const TurnoutActionData &data) {
+  struct Msg {
+    uint32_t id;
+    TurnoutActionData data;
+  };
+  auto *m = new Msg{msg_id, data};
+  lv_async_call(
+      [](void *arg) {
+        auto *m = static_cast<Msg *>(arg);
+        lv_msg_send(m->id, &m->data);
+        delete m;
+      },
+      m);
+}
+
+} // namespace
 
 void DCCEXProtocolDelegateImpl::receivedServerVersion(int major, int minor, int patch) {
   printf("Server Version: %d.%d.%d\n", major, minor, patch);
@@ -17,27 +46,22 @@ void DCCEXProtocolDelegateImpl::receivedMessage(char *message) { printf("Broadca
 
 void DCCEXProtocolDelegateImpl::receivedRosterList() {
   printf("Roster list received.\n");
-  lv_msg_send(MSG_DCC_ROSTER_LIST_RECEIVED, NULL);
-  // WaitingScreen::instance()->setLabel("Roster list received.");
-  // LocoController::getInstance()->loadLocosFromStorage();
+  async_send(MSG_DCC_ROSTER_LIST_RECEIVED);
 }
 
 void DCCEXProtocolDelegateImpl::receivedTurnoutList() {
-   printf("Turnout list received.\n");
-    lv_msg_send(MSG_DCC_TURNOUT_LIST_RECEIVED, NULL);
-  //  WaitingScreen::instance()->setLabel("Turnout list received.");
+  printf("Turnout list received.\n");
+  async_send(MSG_DCC_TURNOUT_LIST_RECEIVED);
 }
 
 void DCCEXProtocolDelegateImpl::receivedRouteList() {
-   printf("Route list received.\n");
-    lv_msg_send(MSG_DCC_ROUTE_LIST_RECEIVED, NULL);
-  //  WaitingScreen::instance()->setLabel("Route list received.");
+  printf("Route list received.\n");
+  async_send(MSG_DCC_ROUTE_LIST_RECEIVED);
 }
 
 void DCCEXProtocolDelegateImpl::receivedTurntableList() {
-   printf("Turntable list received.\n");
-    lv_msg_send(MSG_DCC_TURNTABLE_LIST_RECEIVED, NULL);
-  //  WaitingScreen::instance()->setLabel("Turntable list received.");
+  printf("Turntable list received.\n");
+  async_send(MSG_DCC_TURNTABLE_LIST_RECEIVED);
 }
 
 void DCCEXProtocolDelegateImpl::receivedLocoUpdate(DCCExController::Loco *loco) {
@@ -72,7 +96,7 @@ void DCCEXProtocolDelegateImpl::receivedTurnoutAction(int turnoutId, bool thrown
   printf("Turnout Action: ID=%d, Thrown=%s\n", turnoutId, thrown ? "true" : "false");
   turnoutActionData.turnoutId = turnoutId;
   turnoutActionData.thrown = thrown;
-  lv_msg_send(MSG_DCC_TURNOUT_CHANGED, &turnoutActionData);
+  async_send_turnout(MSG_DCC_TURNOUT_CHANGED, turnoutActionData);
 }
 
 void DCCEXProtocolDelegateImpl::receivedTurntableAction(int turntableId, int position, bool moving) {

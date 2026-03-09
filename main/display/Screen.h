@@ -1,11 +1,11 @@
 #pragma once
+#include "ui/LvglTheme.h"
 #include <LovyanGFX.hpp>
 #include <esp_err.h>
 #include <esp_log.h>
 #include <lvgl.h>
 #include <memory>
 #include <string>
-#include "ui/LvglTheme.h"
 
 namespace display {
 
@@ -16,7 +16,7 @@ public:
   virtual void showScreen(std::weak_ptr<Screen> parentScreen = std::weak_ptr<Screen>{}) {
 
     lvObj_ = lv_scr_act();
-    lv_obj_clean(lvObj_);
+    // lv_obj_clean(lvObj_);
 
     if (!parentScreen.expired()) {
       parentScreen_ = parentScreen;
@@ -28,13 +28,11 @@ public:
 protected:
   virtual void show(lv_obj_t *parent = nullptr, std::weak_ptr<Screen> parentScreen = std::weak_ptr<Screen>{}) = 0;
 
-  virtual void cleanUp() {
-  }
+  virtual void cleanUp() {}
 
   virtual void showError(esp_err_t err) { ESP_LOGE("ERROR", "ESP Error: %s", esp_err_to_name(err)); }
 
   std::weak_ptr<Screen> parentScreen_;
-
 
   lv_obj_t *lvObj_ = nullptr;
 };

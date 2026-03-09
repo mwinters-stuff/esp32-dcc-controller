@@ -15,6 +15,7 @@ namespace display {
 static const char *TAG = "TURNOUT_LIST_SCREEN";
 
 void TurnoutListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
+  isCleanedUp = false;
 
   listItems.clear();
   currentButton = nullptr;
@@ -33,6 +34,9 @@ void TurnoutListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScree
   subscribe_failed = lv_msg_subscribe(
       MSG_WIFI_FAILED,
       [](void *s, lv_msg_t *msg) {
+        TurnoutListScreen *self = static_cast<TurnoutListScreen *>(msg->user_data);
+        if (!self || self->isCleanedUp)
+          return;
         ESP_LOGI(TAG, "Not connected to wifi");
         auto firstScreen = FirstScreen::instance();
         firstScreen->showScreen();
@@ -42,8 +46,10 @@ void TurnoutListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScree
   turnout_changed_sub = lv_msg_subscribe(
       MSG_DCC_TURNOUT_CHANGED,
       [](void *s, lv_msg_t *msg) {
+        TurnoutListScreen *self = static_cast<TurnoutListScreen *>(msg->user_data);
+        if (!self || self->isCleanedUp)
+          return;
         ESP_LOGI(TAG, "Turnout changed message received");
-        auto self = static_cast<TurnoutListScreen *>(msg->user_data);
         TurnoutActionData *data = static_cast<TurnoutActionData *>(const_cast<void *>(msg->payload));
         ESP_LOGI(TAG, "Turnout ID=%d changed to Thrown=%s", data->turnoutId, data->thrown ? "thrown" : "closed");
         auto item = self->getItemByTurnoutId(data->turnoutId);
@@ -59,6 +65,7 @@ void TurnoutListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScree
 }
 
 void TurnoutListScreen::refreshList() {
+  ESP_LOGI(TAG, "Refreshing turnout list");
   auto wifiControl = utilities::WifiControl::instance();
   auto dccProtocol = wifiControl->dccProtocol();
 
@@ -85,7 +92,7 @@ void TurnoutListScreen::refreshList() {
   }
 }
 
-void TurnoutListScreen::resetMsgHandlers() {
+void TurnoutListScreen::unsubscribeAll() {
   if (subscribe_failed) {
     lv_msg_unsubscribe(subscribe_failed);
     subscribe_failed = nullptr;
@@ -94,22 +101,30 @@ void TurnoutListScreen::resetMsgHandlers() {
 
 void TurnoutListScreen::cleanUp() {
   ESP_LOGI(TAG, "Cleaning up TurnoutListScreen");
-  resetMsgHandlers();
+  isCleanedUp = true;
+  unsubscribeAll();
   listItems.clear();
+  lbl_title = nullptr;
+  list_turnouts = nullptr;
+  btn_back = nullptr;
   currentButton = nullptr;
-  lv_obj_del(lvObj_);
+  lv_obj_clean(lvObj_);
 }
 
 void TurnoutListScreen::button_back_callback(lv_event_t *e) {
+  if (isCleanedUp)
+    return;
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     if (auto screen = parentScreen_.lock()) {
-      resetMsgHandlers();
+      cleanUp();
       screen->showScreen();
     }
   }
 }
 
 void TurnoutListScreen::button_listitem_click_event_callback(lv_event_t *e) {
+  if (isCleanedUp)
+    return;
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI(TAG, "List item clicked");
 

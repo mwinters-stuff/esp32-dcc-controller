@@ -10,15 +10,6 @@
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32s3"
   },
-  "clangd.path": "/home/mathew/.espressif/tools/esp-clang/esp-19.1.2_20250312/esp-clang/bin/clangd",
-  "clangd.arguments": [
-    "--log=verbose",
-    "--pretty",
-    "--background-index",
-    "--query-driver=/home/mathew/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/bin/xtensa-esp32-elf-gcc",
-    "--compile-commands-dir=${workspaceFolder}/build"
-  ],
-  "clangd.trace": "verbose",  
   "idf.flashType": "UART",
   "files.associations": {
     "lv_demo_widgets.h": "c",
@@ -99,5 +90,6 @@
   "idf.notificationMode": "Silent",
   "editor.tabSize": 2,
   "editor.detectIndentation": false,
-  "editor.formatOnSave": true
+  "editor.formatOnSave": true,
+  "idf.currentSetup": "/home/mathew/.esp/v5.5.1/esp-idf"
 }

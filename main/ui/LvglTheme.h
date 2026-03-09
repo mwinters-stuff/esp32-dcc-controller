@@ -1,6 +1,7 @@
 #pragma once
 
 #include "LvglStyle.h"
+#include <esp_log.h>
 #include <lvgl.h>
 #include <memory>
 #include <string>
@@ -8,6 +9,7 @@
 
 namespace ui
 {
+  static const char *TAG = "LVGL_THEME";
 
   class LvglTheme
   {
@@ -75,6 +77,7 @@ namespace ui
         auto up = std::make_unique<LvglStyle>();
         LvglStyle &ref = *up;
         styles_.emplace(key, std::move(up));
+        ESP_LOGI(TAG, "Defined style '%s' in theme '%s'", key.c_str(), name_.c_str());
         return ref;
       }
       return *it->second;

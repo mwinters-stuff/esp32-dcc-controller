@@ -1,12 +1,12 @@
 #include "ConnectDCC.h"
 #include "DCCMenu.h"
+#include "FirstScreen.h"
 #include "LvglWrapper.h"
 #include "Screen.h"
 #include "WaitingScreen.h"
 #include "connection/wifi_control.h"
 #include "definitions.h"
 #include "utilities/WifiHandler.h"
-#include "FirstScreen.h"
 #include <memory>
 #include <vector>
 
@@ -15,6 +15,9 @@ namespace display {
 static const char *TAG = "DCC_CONNECT_SCREEN";
 
 void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
+  isCleanedUp = false;
+  lv_obj_clean(lv_scr_act());
+  lvObj_ = lv_scr_act();
 
   detectedListItems.clear();
   currentButton = nullptr;
@@ -53,22 +56,39 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
       },
       this);
 
-  subscribe_failed = lv_msg_subscribe(MSG_WIFI_FAILED, [](void *s, lv_msg_t *msg) {
-    ESP_LOGI(TAG, "Not connected to wifi");
-    auto firstScreen = FirstScreen::instance();
-    firstScreen->showScreen();
-  },this);
+  subscribe_failed = lv_msg_subscribe(
+      MSG_WIFI_FAILED,
+      [](void *s, lv_msg_t *msg) {
+        ESP_LOGI(TAG, "Not connected to wifi");
+        auto firstScreen = FirstScreen::instance();
+        firstScreen->showScreen();
+      },
+      this);
+
+  connect_success = lv_msg_subscribe(
+      MSG_DCC_CONNECTION_SUCCESS,
+      [](void *s, lv_msg_t *msg) {
+        ESP_LOGI(TAG, "Connected to DCC server successfully");
+        // ConnectDCCScreen *self = static_cast<ConnectDCCScreen *>(msg->user_data);
+      },
+      this);
   refreshMdnsList();
 }
 
 void ConnectDCCScreen::refreshMdnsList() {
+  if (isCleanedUp)
+    return;
   auto wifiHandler = utilities::WifiHandler::instance();
   auto devices = wifiHandler->getWithrottleDevices();
   ESP_LOGI(TAG, "Refreshing mDNS list, found %d devices", devices.size());
 
   for (const auto &device : devices) {
+    if (isCleanedUp)
+      return;
     bool found = false;
     for (auto &item : detectedListItems) {
+      if (isCleanedUp)
+        return;
       if (item->matches(device)) // Assume DCCConnectListItem has a matches() method for identity
       {
         found = true;
@@ -101,6 +121,10 @@ void ConnectDCCScreen::resetMsgHandlers() {
     lv_msg_unsubscribe(mdns_changed_sub);
     mdns_changed_sub = nullptr;
   }
+  if (connect_success) {
+    lv_msg_unsubscribe(connect_success);
+    connect_success = nullptr;
+  }
 }
 
 void ConnectDCCScreen::refreshSavedList() {
@@ -113,11 +137,27 @@ void ConnectDCCScreen::refreshSavedList() {
 
 void ConnectDCCScreen::cleanUp() {
   ESP_LOGI(TAG, "Cleaning up ConnectDCCScreen");
+  isCleanedUp = true;
   resetMsgHandlers();
   detectedListItems.clear();
+
+  lv_obj_clean(lbl_title);
+  lv_obj_clean(list_auto);
+  lv_obj_clean(btn_back);
+  lv_obj_clean(btn_save);
+  lv_obj_clean(btn_connect);
+  if (currentButton)
+    lv_obj_clean(currentButton);
+  // lv_obj_clean(savedListItem);
+
+  lbl_title = nullptr;
+  list_auto = nullptr;
+  btn_back = nullptr;
+  btn_save = nullptr;
+  btn_connect = nullptr;
   currentButton = nullptr;
   savedListItem = nullptr;
-  lv_obj_del(lvObj_);
+  // lv_obj_clean(lvObj_);
 }
 
 void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dccItem) {
@@ -142,13 +182,15 @@ void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dc
 
   // Create a FreeRTOS task to wait for connection on core 0
   struct ConnectTaskArgs {
+    std::shared_ptr<ConnectDCCScreen> self;
     std::shared_ptr<utilities::WifiHandler> wifiHandler;
     std::shared_ptr<utilities::WifiControl> wifiControl;
     std::string ip;
     int port;
     std::string instance;
   };
-  auto *args = new ConnectTaskArgs{wifiHandler, wifiControl, dccDevice.ip, dccDevice.port, dccDevice.instance};
+  auto *args = new ConnectTaskArgs{shared_from_this(), wifiHandler,    wifiControl,
+                                   dccDevice.ip,       dccDevice.port, dccDevice.instance};
 
   auto connect_wait_task = [](void *arg) {
     auto *args = static_cast<ConnectTaskArgs *>(arg);
@@ -161,28 +203,40 @@ void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dc
 
     if (currentConnectionState == utilities::WifiControl::CONNECTED) {
       args->wifiHandler->stopMdnsSearchLoop();
-      lv_msg_send(MSG_DCC_CONNECTION_SUCCESS, NULL);
-      auto DCCMenuScreen = DCCMenu::instance();
       ESP_LOGI(TAG, "Successfully connected to DCC server at %s:%d", args->ip.c_str(), args->port);
-      DCCMenuScreen->setConnectedServer(args->ip, args->port, args->instance);
-      DCCMenuScreen->showScreen();
+
+      // All LVGL calls must happen on the LVGL task — schedule via lv_async_call.
+      // Ownership of args transfers to the callback; do NOT delete here.
+      lv_async_call(
+          [](void *cbArg) {
+            auto *args = static_cast<ConnectTaskArgs *>(cbArg);
+            lv_msg_send(MSG_DCC_CONNECTION_SUCCESS, NULL);
+            auto DCCMenuScreen = DCCMenu::instance();
+            DCCMenuScreen->setConnectedServer(args->ip, args->port, args->instance);
+            DCCMenuScreen->showScreen();
+            delete args;
+          },
+          args);
     } else {
-      lv_msg_send(MSG_DCC_CONNECTION_FAILED, NULL);
       ESP_LOGI(TAG, "Failed to connect to DCC server at %s:%d", args->ip.c_str(), args->port);
+
+      lv_async_call(
+          [](void *cbArg) {
+            lv_msg_send(MSG_DCC_CONNECTION_FAILED, NULL);
+            delete static_cast<ConnectTaskArgs *>(cbArg);
+          },
+          args);
     }
-    delete args;
     vTaskDelete(nullptr);
   };
 
-  xTaskCreatePinnedToCore(connect_wait_task, "connect_wait_task", 4096, args, 5, nullptr,
-                          0 // Core 0
-  );
+  xTaskCreate(connect_wait_task, "connect_wait_task", 4096, args, tskIDLE_PRIORITY, nullptr);
 }
 
 void ConnectDCCScreen::button_connect_callback(lv_event_t *e) {
+  if (isCleanedUp)
+    return;
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-    resetMsgHandlers();
-    // TODO: Connect to selected DCC connection
     if (currentButton) {
       auto currentItem = getItem(currentButton);
       if (currentItem) {
@@ -194,6 +248,8 @@ void ConnectDCCScreen::button_connect_callback(lv_event_t *e) {
 }
 
 void ConnectDCCScreen::button_save_callback(lv_event_t *e) {
+  if (isCleanedUp)
+    return;
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     if (currentButton) {
       auto currentItem = getItem(currentButton);
@@ -208,6 +264,8 @@ void ConnectDCCScreen::button_save_callback(lv_event_t *e) {
 }
 
 void ConnectDCCScreen::button_back_callback(lv_event_t *e) {
+  if (isCleanedUp)
+    return;
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     if (auto screen = parentScreen_.lock()) {
       resetMsgHandlers();
@@ -217,8 +275,10 @@ void ConnectDCCScreen::button_back_callback(lv_event_t *e) {
 }
 
 void ConnectDCCScreen::button_listitem_click_event_callback(lv_event_t *e) {
+  if (isCleanedUp || !btn_connect)
+    return;
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-    ESP_LOGI("CONNECT_DCC", "List item clicked");
+    ESP_LOGI(TAG, "List item clicked");
 
     lv_obj_add_state(btn_connect, LV_STATE_DISABLED);
     // You can handle the list item click event here if needed
@@ -228,12 +288,12 @@ void ConnectDCCScreen::button_listitem_click_event_callback(lv_event_t *e) {
 
     /*If container was clicked do nothing*/
     if (target == cont) {
-      ESP_LOGI("CONNECT_DCC", "Clicked on container, ignoring");
+      ESP_LOGI(TAG, "Clicked on container, ignoring");
       return;
     }
 
     // void * event_data = lv_event_get_user_data(e);
-    ESP_LOGI("CONNECT_DCC", "Clicked: %s", lv_list_get_btn_text(list_auto, target));
+    ESP_LOGI(TAG, "Clicked: %s", lv_list_get_btn_text(list_auto, target));
 
     if (currentButton == target) {
       currentButton = NULL;
@@ -245,11 +305,11 @@ void ConnectDCCScreen::button_listitem_click_event_callback(lv_event_t *e) {
     for (i = 0; i < lv_obj_get_child_cnt(parent); i++) {
       lv_obj_t *child = lv_obj_get_child(parent, i);
       if (child == currentButton) {
-        ESP_LOGI("CONNECT_DCC", "Setting CHECKED state on %s", lv_list_get_btn_text(list_auto, child));
+        ESP_LOGI(TAG, "Setting CHECKED state on %s", lv_list_get_btn_text(list_auto, child));
         lv_obj_add_state(child, LV_STATE_CHECKED);
         lv_obj_clear_state(btn_connect, LV_STATE_DISABLED);
       } else {
-        ESP_LOGI("CONNECT_DCC", "Clearing CHECKED state on %s", lv_list_get_btn_text(list_auto, child));
+        ESP_LOGI(TAG, "Clearing CHECKED state on %s", lv_list_get_btn_text(list_auto, child));
         lv_obj_clear_state(child, LV_STATE_CHECKED);
       }
     }

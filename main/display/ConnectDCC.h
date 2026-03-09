@@ -26,29 +26,29 @@ public:
   void refreshSavedList();
   void resetMsgHandlers();
   std::shared_ptr<DCCConnectListItem> getItem(lv_obj_t *bn);
-  
-    void button_connect_callback(lv_event_t *e);
+
+  void button_connect_callback(lv_event_t *e);
   void button_save_callback(lv_event_t *e);
   void button_back_callback(lv_event_t *e);
   void button_listitem_click_event_callback(lv_event_t *e);
+
 private:
   std::vector<std::shared_ptr<DCCConnectListItem>> detectedListItems;
   std::shared_ptr<DCCConnectListItem> savedListItem;
-  
 
   void *mdns_added_sub = nullptr;
   void *mdns_changed_sub = nullptr;
   void *subscribe_failed = nullptr;
+  void *connect_success = nullptr;
 
-  lv_obj_t *lbl_title;
-  // lv_obj_t *tab_view;
-  lv_obj_t *list_auto;
-  // lv_obj_t *list_saved;
-  lv_obj_t *btn_back;
-  lv_obj_t *btn_save;
-  lv_obj_t *btn_connect;
+
+  bool isCleanedUp = false;
+  lv_obj_t *lbl_title = nullptr;
+  lv_obj_t *list_auto = nullptr;
+  lv_obj_t *btn_back = nullptr;
+  lv_obj_t *btn_save = nullptr;
+  lv_obj_t *btn_connect = nullptr;
   lv_obj_t *currentButton = nullptr;
-
 
 protected:
   ConnectDCCScreen() = default;
@@ -71,13 +71,10 @@ protected:
       self->button_back_callback(e);
   }
 
-
   static void event_listitem_click_trampoline(lv_event_t *e) {
     auto *self = static_cast<ConnectDCCScreen *>(lv_event_get_user_data(e));
     if (self)
       self->button_listitem_click_event_callback(e);
   }
-
-
 };
 } // namespace display

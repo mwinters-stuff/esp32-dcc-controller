@@ -17,6 +17,8 @@ namespace display {
 using namespace ui;
 
 class WifiConnectScreen : public Screen, public std::enable_shared_from_this<WifiConnectScreen> {
+  bool isCleanedUp = false;
+
 public:
   static std::shared_ptr<WifiConnectScreen> instance() {
     static std::shared_ptr<WifiConnectScreen> s;
@@ -35,24 +37,24 @@ public:
   WifiConnectScreen(const WifiConnectScreen &) = delete;
   WifiConnectScreen &operator=(const WifiConnectScreen &) = delete;
 
-  lv_obj_t *lbl_status;
-  lv_obj_t *lbl_spinner;
-  lv_obj_t *kb_keyboard;
+  lv_obj_t *lbl_status = nullptr;
+  lv_obj_t *lbl_spinner = nullptr;
+  lv_obj_t *kb_keyboard = nullptr;
 
   void wifi_connected_callback(void *s, lv_msg_t *msg);
   void wifi_failed_callback(void *s, lv_msg_t *msg);
 
   void event_password_show_callback(lv_event_t *e);
   void event_keyboard_callback(lv_event_t *e);
-  
+
 private:
-  lv_obj_t *lbl_title;
-  lv_obj_t *lbl_subtitle;
-  lv_obj_t *vert_container;
-  lv_obj_t *lbl_pwd;
-  lv_obj_t *pwd_container;
-  lv_obj_t *ta_password;
-  lv_obj_t *bs_password_show;
+  lv_obj_t *lbl_title = nullptr;
+  lv_obj_t *lbl_subtitle = nullptr;
+  lv_obj_t *vert_container = nullptr;
+  lv_obj_t *lbl_pwd = nullptr;
+  lv_obj_t *pwd_container = nullptr;
+  lv_obj_t *ta_password = nullptr;
+  lv_obj_t *bs_password_show = nullptr;
 
   std::string ssid;
 
@@ -64,13 +66,13 @@ private:
 protected:
   WifiConnectScreen() = default;
 
-  static void wifi_connected_trampoline(void *s, lv_msg_t *msg){
+  static void wifi_connected_trampoline(void *s, lv_msg_t *msg) {
     auto *self = static_cast<WifiConnectScreen *>(msg->user_data);
     if (self)
       self->wifi_connected_callback(s, msg);
   }
 
-  static void wifi_failed_trampoline(void *s, lv_msg_t *msg){
+  static void wifi_failed_trampoline(void *s, lv_msg_t *msg) {
     auto *self = static_cast<WifiConnectScreen *>(msg->user_data);
     if (self)
       self->wifi_failed_callback(s, msg);
@@ -87,7 +89,5 @@ protected:
     if (self)
       self->event_keyboard_callback(e);
   }
-
-
 };
 } // namespace display

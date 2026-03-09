@@ -23,7 +23,6 @@ public:
 
   void enableButtons(bool enableConnect);
   void disableButtons();
-  void unsubscribeAll();
 
   void button_connect_callback(lv_event_t *e);
   void button_wifi_list_callback(lv_event_t *e);
@@ -72,19 +71,18 @@ protected:
       self->wifi_not_saved_callback(s, msg);
   }
 
-
 private:
-  void *subscribe_connected;
-  void *subscribe_failed;
-  void *subscribe_not_saved;
+  bool isCleanedUp = false;
+  void *subscribe_connected = nullptr;
+  void *subscribe_failed = nullptr;
+  void *subscribe_not_saved = nullptr;
 
-  lv_obj_t *lbl_title;
-  lv_obj_t *btn_connect;
-  lv_obj_t *btn_wifi_scan;
-  lv_obj_t *btn_cal;
-  lv_obj_t *lbl_status;
-  lv_obj_t *lbl_ip;
-
+  lv_obj_t *lbl_title = nullptr;
+  lv_obj_t *btn_connect = nullptr;
+  lv_obj_t *btn_wifi_scan = nullptr;
+  lv_obj_t *btn_cal = nullptr;
+  lv_obj_t *lbl_status = nullptr;
+  lv_obj_t *lbl_ip = nullptr;
 };
 
 } // namespace display

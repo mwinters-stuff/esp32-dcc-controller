@@ -21,7 +21,7 @@ public:
   void cleanUp() override;
 
   void refreshList();
-  void resetMsgHandlers();
+  void unsubscribeAll();
   std::shared_ptr<TurnoutListItem> getItem(lv_obj_t *bn);
 
   void button_back_callback(lv_event_t *e);
@@ -35,9 +35,10 @@ private:
   void *subscribe_failed = nullptr;
   void *turnout_changed_sub = nullptr;
 
-  lv_obj_t *lbl_title;
-  lv_obj_t *list_turnouts;
-  lv_obj_t *btn_back;
+  bool isCleanedUp = false;
+  lv_obj_t *lbl_title = nullptr;
+  lv_obj_t *list_turnouts = nullptr;
+  lv_obj_t *btn_back = nullptr;
   lv_obj_t *currentButton = nullptr;
 
 protected:

@@ -2,18 +2,30 @@
 
 namespace display {
 
+static const char *TAG = "LVGL_WRAPPER";
+
 void setStyle(lv_obj_t *widget, const std::string &styleName) {
   auto theme = ui::LvglTheme::active();
+  if(theme == nullptr) {
+    ESP_LOGW(TAG, "No active theme set (setStyle), cannot apply style '%s'", styleName.c_str());
+    return;
+  }
   auto s = theme->get(styleName);
   if (s) {
+    ESP_LOGI(TAG, "Applying style '%s' to widget %p", styleName.c_str(), (void*)widget);
     s->applyTo(widget);
   }
 }
 
 void setStylePart(lv_obj_t *widget, const std::string &styleName, lv_part_t part) {
   auto theme = ui::LvglTheme::active();
+  if(theme == nullptr) {
+    ESP_LOGW(TAG, "No active theme set (setStylePart), cannot apply style '%s'", styleName.c_str());
+    return;
+  }
   auto s = theme->get(styleName);
   if (s) {
+    ESP_LOGI(TAG, "Applying style part '%s' to widget %p", styleName.c_str(), (void*)widget);
     s->applyTo(widget, part);
   }
 }

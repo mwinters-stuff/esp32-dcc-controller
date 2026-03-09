@@ -15,6 +15,7 @@ namespace display {
 static const char *TAG = "ROSTER_LIST_SCREEN";
 
 void RosterListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
+  isCleanedUp = false;
 
   listItems.clear();
   currentButton = nullptr;
@@ -37,7 +38,11 @@ void RosterListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
   subscribe_failed = lv_msg_subscribe(
       MSG_WIFI_FAILED,
       [](void *s, lv_msg_t *msg) {
+        RosterListScreen *self = static_cast<RosterListScreen *>(msg->user_data);
+        if (!self || self->isCleanedUp)
+          return;
         ESP_LOGI(TAG, "Not connected to wifi");
+        self->cleanUp();
         auto firstScreen = FirstScreen::instance();
         firstScreen->showScreen();
       },
@@ -73,7 +78,7 @@ void RosterListScreen::refreshList() {
   }
 }
 
-void RosterListScreen::resetMsgHandlers() {
+void RosterListScreen::unsubscribeAll() {
   if (subscribe_failed) {
     lv_msg_unsubscribe(subscribe_failed);
     subscribe_failed = nullptr;
@@ -82,22 +87,30 @@ void RosterListScreen::resetMsgHandlers() {
 
 void RosterListScreen::cleanUp() {
   ESP_LOGI(TAG, "Cleaning up RosterListScreen");
-  resetMsgHandlers();
+  isCleanedUp = true;
+  unsubscribeAll();
   listItems.clear();
+  lbl_title = nullptr;
+  list_roster = nullptr;
+  btn_back = nullptr;
   currentButton = nullptr;
-  lv_obj_del(lvObj_);
+  lv_obj_clean(lvObj_);
 }
 
 void RosterListScreen::button_back_callback(lv_event_t *e) {
+  if (isCleanedUp)
+    return;
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     if (auto screen = parentScreen_.lock()) {
-      resetMsgHandlers();
+      cleanUp();
       screen->showScreen();
     }
   }
 }
 
 void RosterListScreen::button_listitem_click_event_callback(lv_event_t *e) {
+  if (isCleanedUp)
+    return;
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI(TAG, "List item clicked");
 
@@ -113,35 +126,26 @@ void RosterListScreen::button_listitem_click_event_callback(lv_event_t *e) {
     }
 
     // void * event_data = lv_event_get_user_data(e);
-    ESP_LOGI(TAG, "Toggling: %s", lv_list_get_btn_text(list_roster, target));
+    ESP_LOGI(TAG, "Clicked: %s", lv_list_get_btn_text(list_roster, target));
 
-    // auto item = getItem(target);
-    // if (item) {
-    //   ESP_LOGI("CONNECT_DCC", "Found item for roster ID %d", item->getRosterId());
-    //   auto wifiControl = utilities::WifiControl::instance();
-    //   auto dccProtocol = wifiControl->dccProtocol();
-    //   if(dccProtocol) {
-    //     auto roster = DCCExController::Roster::getById(item->getRosterId());
-    //     if(roster) {
-    //       bool newThrownState = !roster->getThrown();
-    //       ESP_LOGI("CONNECT_DCC", "Setting roster ID %d to %s", roster->getId(), newThrownState ? "thrown" :
-    //       "closed"); if(newThrownState) {
-    //         dccProtocol->throwRoster(roster->getId());
-    //       } else {
-    //         dccProtocol->closeRoster(roster->getId());
-    //       }
-    //       // Update the list item display
-    //       item->updateName(newThrownState);
-
-    //     } else {
-    //       ESP_LOGW("CONNECT_DCC", "No roster found for ID %d", item->index);
-    //     }
-    //   } else {
-    //     ESP_LOGW("CONNECT_DCC", "DCC Protocol is null, cannot toggle roster");
-    //   }
-    // } else {
-    //   ESP_LOGW("CONNECT_DCC", "No item found for clicked button");
-    // }
+    if (currentButton == target) {
+      currentButton = NULL;
+    } else {
+      currentButton = target;
+    }
+    lv_obj_t *parent = lv_obj_get_parent(target);
+    uint32_t i;
+    for (i = 0; i < lv_obj_get_child_cnt(parent); i++) {
+      lv_obj_t *child = lv_obj_get_child(parent, i);
+      if (child == currentButton) {
+        ESP_LOGI(TAG, "Setting CHECKED state on %s", lv_list_get_btn_text(list_roster, child));
+        lv_obj_add_state(child, LV_STATE_CHECKED);
+        // lv_obj_clear_state(btn_connect, LV_STATE_DISABLED);
+      } else {
+        ESP_LOGI(TAG, "Clearing CHECKED state on %s", lv_list_get_btn_text(list_roster, child));
+        lv_obj_clear_state(child, LV_STATE_CHECKED);
+      }
+    }
   }
 }
 

@@ -9,13 +9,13 @@
 
 namespace display {
 
-class TurnoutListItem {
+class TurnTableListItem {
 public:
   lv_obj_t *parentObj;
   size_t index;
 
-  TurnoutListItem(lv_obj_t *parent, size_t index, int turnoutId, std::string name, bool thrown)
-      : parentObj(parent), index(index), turnoutId(turnoutId), name(std::move(name)), thrown(thrown) {
+  TurnTableListItem(lv_obj_t *parent, size_t index, int turntableId, std::string name)
+      : parentObj(parent), index(index), turntableId(turntableId), name(std::move(name)) {
     lvObj = lv_list_add_btn_mode(parent, getImage(), getDisplayName().c_str(), LV_LABEL_LONG_DOT);
     lv_obj_add_flag(lvObj, LV_OBJ_FLAG_EVENT_BUBBLE);
     setStylePart(lvObj, "wifi.item", LV_PART_MAIN);
@@ -24,31 +24,17 @@ public:
 
   lv_obj_t *getLvObj() const { return lvObj; }
 
-  void updateThrown(bool thrown) {
-    this->thrown = thrown;
-    lv_list_set_btn_icon(lvObj, getImage());
-  }
-
   std::string getDisplayName() const {
     return name; // + " (" + (thrown ? "Thrown" : "Closed") + ")";
   }
 
-  lv_img_dsc_t const *getImage() const {
-    if (thrown) {
-      return &turnoutclosed;
-    } else {
-      return &turnoutopen;
-    }
-  }
+  lv_img_dsc_t const *getImage() const { return &turnoutopen; }
 
-  int getTurnoutId() const { return turnoutId; }
-
-  bool isThrown() const { return thrown; }
+  int getTurntableId() const { return turntableId; }
 
 private:
   lv_obj_t *lvObj;
-  int turnoutId;
+  int turntableId;
   std::string name;
-  bool thrown = false;
 };
 } // namespace display

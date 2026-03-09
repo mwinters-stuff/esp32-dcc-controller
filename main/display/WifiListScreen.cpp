@@ -15,6 +15,7 @@ static const char *TAG = "WIFI_LIST_SCREEN";
 
 void WifiListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   utilities::WifiHandler::instance()->stopMdnsSearchLoop();
+  isCleanedUp = false;
 
   // Full-screen container
   lv_obj_set_size(lvObj_, LV_HOR_RES, LV_VER_RES);
@@ -43,23 +44,33 @@ void WifiListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) 
   disableButtons();
 
   // Start Wi-Fi scan in a separate task
-  xTaskCreatePinnedToCore(
+  xTaskCreate(
       [](void *param) {
         auto *self = static_cast<WifiListScreen *>(param);
         self->scanWifiTask();
+        self->scanTaskHandle = 0; // null before self-delete so cleanUp() won't double-delete
         vTaskDelete(nullptr);
       },
       "wifi_scan_task",
       4096, // stack size
       this,
-      5, // priority
-      &scanTaskHandle,
-      1 // run on core 1 (UI often on core 0)
-  );
+      tskIDLE_PRIORITY, // priority
+      &scanTaskHandle);
 }
 
 void WifiListScreen::cleanUp() {
   ESP_LOGI(TAG, "WifiListScreen cleaned up");
+  isCleanedUp = true;
+  if (scanTaskHandle != 0) {
+    vTaskDelete(scanTaskHandle);
+    scanTaskHandle = 0;
+  }
+  lbl_title = nullptr;
+  btn_back = nullptr;
+  btn_connect = nullptr;
+  list_view = nullptr;
+  spinner = nullptr;
+  currentButton = nullptr;
   lv_obj_clean(lvObj_);
 }
 
@@ -81,9 +92,12 @@ void WifiListScreen::scanWifiTask() {
     ESP_LOGI(TAG, "No APs found");
     lv_async_call(
         [](void *data) {
-          lv_obj_add_flag((lv_obj_t *)data, LV_OBJ_FLAG_HIDDEN);
+          auto *self = static_cast<WifiListScreen *>(data);
+          if (self->isCleanedUp)
+            return;
+          lv_obj_add_flag(self->spinner, LV_OBJ_FLAG_HIDDEN);
         },
-        spinner);
+        this);
     return;
   }
 
@@ -98,6 +112,11 @@ void WifiListScreen::scanWifiTask() {
   lv_async_call(
       [](void *data) {
         auto *ctx = static_cast<std::pair<WifiListScreen *, std::vector<wifi_ap_record_t> *> *>(data);
+        if (ctx->first->isCleanedUp) {
+          delete ctx->second;
+          delete ctx;
+          return;
+        }
         auto *self = ctx->first;
         auto *records = ctx->second;
         self->populateList(*records);
@@ -127,23 +146,30 @@ void WifiListScreen::populateList(const std::vector<wifi_ap_record_t> &records) 
 }
 
 void WifiListScreen::disableButtons() {
+  if (isCleanedUp)
+    return;
   ESP_LOGI(TAG, "DisableButtons");
   lv_obj_add_state(btn_connect, LV_STATE_DISABLED);
   lv_obj_add_state(btn_back, LV_STATE_DISABLED);
 }
 
 void WifiListScreen::enableButtons() {
+  if (isCleanedUp)
+    return;
   ESP_LOGI(TAG, "EnableButtons");
   lv_obj_clear_state(btn_back, LV_STATE_DISABLED);
 }
 
 void WifiListScreen::button_connect_event_callback(lv_event_t *e) {
+  if (isCleanedUp)
+    return;
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI("WIFI_LIST_SCREEN", "Connect button pressed");
     auto instance = WifiConnectScreen::instance();
     auto currentItem = getCurrentCheckedItem(currentButton);
     if (currentItem) {
       // Now you can access WifiListItem-specific methods
+      cleanUp();
       instance->setSSID(currentItem->getSsid());
       instance->showScreen(WifiListScreen::instance());
     }
@@ -151,24 +177,29 @@ void WifiListScreen::button_connect_event_callback(lv_event_t *e) {
 }
 
 std::shared_ptr<WifiListItem> WifiListScreen::getCurrentCheckedItem(lv_obj_t *bn) {
-    for (const auto &item : items) {
-        if (item->getLvObj() == bn) {
-            return item;
-        }
+  for (const auto &item : items) {
+    if (item->getLvObj() == bn) {
+      return item;
     }
-    return nullptr;
+  }
+  return nullptr;
 }
 
 void WifiListScreen::button_back_event_callback(lv_event_t *e) {
+  if (isCleanedUp)
+    return;
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI("WIFI_LIST_SCREEN", "Back button pressed");
     if (auto screen = parentScreen_.lock()) {
+      cleanUp();
       screen->showScreen();
     }
   }
 }
 
 void WifiListScreen::button_listitem_click_event_callback(lv_event_t *e) {
+  if (isCleanedUp)
+    return;
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI("WIFI_LIST_SCREEN", "List item clicked");
 
@@ -179,33 +210,31 @@ void WifiListScreen::button_listitem_click_event_callback(lv_event_t *e) {
     lv_obj_t *cont = lv_event_get_current_target(e);
 
     /*If container was clicked do nothing*/
-    if (target == cont){
+    if (target == cont) {
       ESP_LOGI("WIFI_LIST_SCREEN", "Clicked on container, ignoring");
       return;
     }
-      
 
     // void * event_data = lv_event_get_user_data(e);
     ESP_LOGI("WIFI_LIST_SCREEN", "Clicked: %s", lv_list_get_btn_text(list_view, target));
 
-    if(currentButton == target) {
-        currentButton = NULL;
+    if (currentButton == target) {
+      currentButton = NULL;
+    } else {
+      currentButton = target;
     }
-    else {
-        currentButton = target;
-    }
-    lv_obj_t * parent = lv_obj_get_parent(target);
+    lv_obj_t *parent = lv_obj_get_parent(target);
     uint32_t i;
-    for(i = 0; i < lv_obj_get_child_cnt(parent); i++) {
-        lv_obj_t * child = lv_obj_get_child(parent, i);
-        if(child == currentButton) {
-            ESP_LOGI("WIFI_LIST_SCREEN", "Setting CHECKED state on %s", lv_list_get_btn_text(list_view, child));
-            lv_obj_add_state(child, LV_STATE_CHECKED);
-            lv_obj_clear_state(btn_connect, LV_STATE_DISABLED);
-        } else {
-            ESP_LOGI("WIFI_LIST_SCREEN", "Clearing CHECKED state on %s", lv_list_get_btn_text(list_view, child));
-            lv_obj_clear_state(child, LV_STATE_CHECKED);
-        }
+    for (i = 0; i < lv_obj_get_child_cnt(parent); i++) {
+      lv_obj_t *child = lv_obj_get_child(parent, i);
+      if (child == currentButton) {
+        ESP_LOGI("WIFI_LIST_SCREEN", "Setting CHECKED state on %s", lv_list_get_btn_text(list_view, child));
+        lv_obj_add_state(child, LV_STATE_CHECKED);
+        lv_obj_clear_state(btn_connect, LV_STATE_DISABLED);
+      } else {
+        ESP_LOGI("WIFI_LIST_SCREEN", "Clearing CHECKED state on %s", lv_list_get_btn_text(list_view, child));
+        lv_obj_clear_state(child, LV_STATE_CHECKED);
+      }
     }
   }
 }

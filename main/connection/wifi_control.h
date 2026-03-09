@@ -59,6 +59,7 @@ public:
 
 private:
   connection_state currentConnectionState = NOT_CONNECTED;
+  uint64_t lastGetListsMs = 0;
 
   struct ConnectTaskArgs {
     WifiControl *self;

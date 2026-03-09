@@ -1,17 +1,19 @@
 #include "FirstScreen.h"
 #include "ConnectDCC.h"
+#include "LvglWrapper.h"
 #include "ManualCalibration.h"
 #include "WaitingScreen.h"
 #include "WifiListScreen.h"
 #include "definitions.h"
 #include "utilities/WifiHandler.h"
 #include <esp_log.h>
-#include "LvglWrapper.h"
 
 namespace display {
 static const char *TAG = "FIRST_SCREEN";
 
 void FirstScreen::wifi_connected_callback(void *s, lv_msg_t *msg) {
+  if (isCleanedUp)
+    return;
   enableButtons(true);
   ESP_LOGI(TAG, "Connected to wifi");
   if (lbl_status)
@@ -23,6 +25,8 @@ void FirstScreen::wifi_connected_callback(void *s, lv_msg_t *msg) {
 }
 
 void FirstScreen::wifi_failed_callback(void *s, lv_msg_t *msg) {
+  if (isCleanedUp)
+    return;
   enableButtons(false);
   ESP_LOGI(TAG, "Not connected to wifi");
   if (lbl_status)
@@ -32,6 +36,8 @@ void FirstScreen::wifi_failed_callback(void *s, lv_msg_t *msg) {
 }
 
 void FirstScreen::wifi_not_saved_callback(void *s, lv_msg_t *msg) {
+  if (isCleanedUp)
+    return;
   enableButtons(false);
   ESP_LOGI(TAG, "No wifi details saved");
   if (lbl_status)
@@ -41,6 +47,9 @@ void FirstScreen::wifi_not_saved_callback(void *s, lv_msg_t *msg) {
 }
 
 void FirstScreen::enableButtons(bool enableConnect) {
+  if (isCleanedUp)
+    return;
+
   ESP_LOGI(TAG, "EnableButtons");
   // Enable or disable buttons (C LVGL)
   lv_obj_clear_state(btn_connect, LV_STATE_DISABLED);
@@ -51,6 +60,9 @@ void FirstScreen::enableButtons(bool enableConnect) {
 }
 
 void FirstScreen::disableButtons() {
+  if (isCleanedUp)
+    return;
+
   ESP_LOGI(TAG, "DisableButtons");
   // Disable all buttons (C LVGL)
   lv_obj_add_state(btn_connect, LV_STATE_DISABLED);
@@ -59,15 +71,16 @@ void FirstScreen::disableButtons() {
 }
 
 void FirstScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
+  isCleanedUp = false;
+
   // Title Label
   lbl_title = makeLabel(lvObj_, "DCC Controller", LV_ALIGN_TOP_MID, 0, 10, "label.title", &lv_font_montserrat_30);
-
 
   // "Connect" button
   btn_connect = makeButton(lvObj_, "Connect", 200, 48, LV_ALIGN_CENTER, 0, -60, "button.primary");
   lv_obj_add_event_cb(btn_connect, &FirstScreen::event_connect_trampoline, LV_EVENT_CLICKED, this);
 
-    // "Scan WiFi" button
+  // "Scan WiFi" button
   btn_wifi_scan = makeButton(lvObj_, "Scan WiFi", 200, 48, LV_ALIGN_CENTER, 0, 0, "button.primary");
   lv_obj_add_event_cb(btn_wifi_scan, &FirstScreen::event_wifi_list_trampoline, LV_EVENT_CLICKED, this);
 
@@ -76,12 +89,13 @@ void FirstScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   lv_obj_add_event_cb(btn_cal, &FirstScreen::event_calibrate_trampoline, LV_EVENT_CLICKED, this);
 
   disableButtons();
-  
+
   // Status labels under the last button
   auto ip = utilities::WifiHandler::instance()->getIpAddress();
   bool connected = !ip.empty();
 
-  lbl_status = makeLabel(lvObj_, connected ? "WiFi Connected" : "WiFi Connecting...", LV_ALIGN_CENTER, 0, 120, "label.main");
+  lbl_status =
+      makeLabel(lvObj_, connected ? "WiFi Connected" : "WiFi Connecting...", LV_ALIGN_CENTER, 0, 120, "label.main");
   lbl_ip = makeLabel(lvObj_, ip.empty() ? "" : ip.c_str(), LV_ALIGN_CENTER, 0, 150, "label.muted");
 
   // Subscribe to WiFi messages
@@ -96,50 +110,64 @@ void FirstScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   }
 }
 
-void FirstScreen::unsubscribeAll() {
-  if (subscribe_connected != NULL) {
-    lv_msg_unsubscribe(subscribe_connected);
-    subscribe_connected = NULL;
-  }
-  if (subscribe_failed != NULL) {
-    lv_msg_unsubscribe(subscribe_failed);
-    subscribe_failed = NULL;
-  }
-  if (subscribe_not_saved != NULL) {
-    lv_msg_unsubscribe(subscribe_not_saved);
-    subscribe_not_saved = NULL;
-  }
-}
-
 void FirstScreen::cleanUp() {
   ESP_LOGI(TAG, "FirstScreen cleaned up");
-  // In C LVGL, you may want to delete all children of lvObj_ or reset the screen
+  isCleanedUp = true;
+
+  if (subscribe_connected != nullptr) {
+    lv_msg_unsubscribe(subscribe_connected);
+    subscribe_connected = nullptr;
+  }
+  if (subscribe_failed != nullptr) {
+    lv_msg_unsubscribe(subscribe_failed);
+    subscribe_failed = nullptr;
+  }
+  if (subscribe_not_saved != nullptr) {
+    lv_msg_unsubscribe(subscribe_not_saved);
+    subscribe_not_saved = nullptr;
+  }
+
+  lbl_title = nullptr;
+  btn_connect = nullptr;
+  btn_wifi_scan = nullptr;
+  btn_cal = nullptr;
+  lbl_status = nullptr;
+  lbl_ip = nullptr;
+
   lv_obj_clean(lvObj_);
 }
 
 void FirstScreen::button_connect_callback(lv_event_t *e) {
+  if (isCleanedUp)
+    return;
   if (e->code != LV_EVENT_CLICKED)
     return;
   ESP_LOGI(TAG, "Connect button clicked!");
-  unsubscribeAll();
+  cleanUp();
   auto connectDCCScreen = ConnectDCCScreen::instance();
   connectDCCScreen->showScreen(FirstScreen::instance());
 }
 
 void FirstScreen::button_wifi_list_callback(lv_event_t *e) {
+  if (isCleanedUp)
+    return;
+
   if (e->code != LV_EVENT_CLICKED)
     return;
   ESP_LOGI(TAG, "Scan WiFi button clicked!");
-  unsubscribeAll();
+  cleanUp();
   auto wifiScreen = WifiListScreen::instance();
   wifiScreen->showScreen(FirstScreen::instance());
 }
 
 void FirstScreen::button_calibrate_callback(lv_event_t *e) {
+  if (isCleanedUp)
+    return;
+
   if (e->code != LV_EVENT_CLICKED)
     return;
   ESP_LOGI(TAG, "Calibrate button clicked!");
-  unsubscribeAll();
+  cleanUp();
   auto calScreen = ManualCalibration::instance();
   calScreen->showScreen(FirstScreen::instance());
 }
