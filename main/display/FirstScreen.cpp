@@ -24,17 +24,6 @@ void FirstScreen::wifi_connected_callback(lv_msg_t *msg) {
   }
 }
 
-void FirstScreen::wifi_failed_callback(lv_msg_t *msg) {
-  if (isCleanedUp)
-    return;
-  enableButtons(false);
-  ESP_LOGI(TAG, "Not connected to wifi");
-  if (lbl_status)
-    lv_label_set_text(lbl_status, "WiFi Disconnected");
-  if (lbl_ip)
-    lv_label_set_text(lbl_ip, "");
-}
-
 void FirstScreen::wifi_not_saved_callback(lv_msg_t *msg) {
   if (isCleanedUp)
     return;
@@ -92,8 +81,8 @@ void FirstScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   disableButtons();
 
   // Status labels under the last button
+  bool connected = utilities::WifiHandler::instance()->isConnected();
   auto ip = utilities::WifiHandler::instance()->getIpAddress();
-  bool connected = !ip.empty();
 
   lbl_status =
       makeLabel(lvObj_, connected ? "WiFi Connected" : "WiFi Connecting...", LV_ALIGN_CENTER, 0, 120, "label.main");
@@ -101,7 +90,6 @@ void FirstScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
 
   // Subscribe to WiFi messages
   subscribe_connected = lv_msg_subscribe(MSG_WIFI_CONNECTED, &FirstScreen::wifi_connected_trampoline, this);
-  subscribe_failed = lv_msg_subscribe(MSG_WIFI_FAILED, &FirstScreen::wifi_failed_trampoline, this);
   subscribe_not_saved = lv_msg_subscribe(MSG_WIFI_NOT_SAVED, &FirstScreen::wifi_not_saved_trampoline, this);
   ESP_LOGI(TAG, "FirstScreen UI created (C LVGL)");
   if (!connected) {
@@ -118,10 +106,6 @@ void FirstScreen::cleanUp() {
   if (subscribe_connected != nullptr) {
     lv_msg_unsubscribe(subscribe_connected);
     subscribe_connected = nullptr;
-  }
-  if (subscribe_failed != nullptr) {
-    lv_msg_unsubscribe(subscribe_failed);
-    subscribe_failed = nullptr;
   }
   if (subscribe_not_saved != nullptr) {
     lv_msg_unsubscribe(subscribe_not_saved);

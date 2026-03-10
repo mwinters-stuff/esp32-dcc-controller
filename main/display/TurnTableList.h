@@ -32,7 +32,6 @@ private:
   std::vector<std::shared_ptr<TurnTableListItem>> listItems;
   std::shared_ptr<TurnTableListItem> getItemByTurnTableId(int TurnTableId);
 
-  lv_msg_sub_dsc_t *subscribe_failed = nullptr;
   // void *TurnTable_changed_sub = nullptr;
 
   bool isCleanedUp = false;

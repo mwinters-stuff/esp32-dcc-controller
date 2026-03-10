@@ -30,7 +30,6 @@ public:
   void button_calibrate_callback(lv_event_t *e);
 
   void wifi_connected_callback(lv_msg_t *msg);
-  void wifi_failed_callback(lv_msg_t *msg);
   void wifi_not_saved_callback(lv_msg_t *msg);
 
 protected:
@@ -60,12 +59,6 @@ protected:
       self->wifi_connected_callback(msg);
   }
 
-  static void wifi_failed_trampoline(lv_msg_t *msg) {
-    auto *self = static_cast<FirstScreen *>(lv_msg_get_user_data(msg));
-    if (self)
-      self->wifi_failed_callback(msg);
-  }
-
   static void wifi_not_saved_trampoline(lv_msg_t *msg) {
     auto *self = static_cast<FirstScreen *>(lv_msg_get_user_data(msg));
     if (self)
@@ -75,7 +68,6 @@ protected:
 private:
   bool isCleanedUp = false;
   lv_msg_sub_dsc_t *subscribe_connected = nullptr;
-  lv_msg_sub_dsc_t *subscribe_failed = nullptr;
   lv_msg_sub_dsc_t *subscribe_not_saved = nullptr;
 
   lv_obj_t *lbl_title = nullptr;

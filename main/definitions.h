@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/lv_msg.h"
+#include <cstdint>
 
 #define MSG_WIFI_CONNECTED 1
 #define MSG_WIFI_FAILED 2
@@ -30,3 +31,14 @@
 #define NVS_WIFI_PWD "wifi_pwd"
 
 #define DEFAULT_SCAN_LIST_SIZE 20
+
+enum class WifiFailedSource : uint8_t {
+  Unknown = 0,
+  ConnectAttempt = 1,
+  Disconnected = 2,
+};
+
+struct WifiFailedPayload {
+  WifiFailedSource source;
+  bool suppressGlobalPopup;
+};

@@ -38,9 +38,7 @@ private:
 
   lv_msg_sub_dsc_t *mdns_added_sub = nullptr;
   lv_msg_sub_dsc_t *mdns_changed_sub = nullptr;
-  lv_msg_sub_dsc_t *subscribe_failed = nullptr;
   lv_msg_sub_dsc_t *connect_success = nullptr;
-
 
   bool isCleanedUp = false;
   lv_obj_t *lbl_title = nullptr;

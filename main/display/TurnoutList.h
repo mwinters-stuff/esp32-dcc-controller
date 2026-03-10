@@ -32,7 +32,6 @@ private:
   void throwTurnout(std::shared_ptr<TurnoutListItem> item, bool newThrownState);
   std::shared_ptr<TurnoutListItem> getItemByTurnoutId(int turnoutId);
 
-  lv_msg_sub_dsc_t *subscribe_failed = nullptr;
   lv_msg_sub_dsc_t *turnout_changed_sub = nullptr;
 
   bool isCleanedUp = false;

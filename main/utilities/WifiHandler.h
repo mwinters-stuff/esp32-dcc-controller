@@ -67,6 +67,7 @@ public:
 private:
   static std::vector<WithrottleDevice> withrottle_devices;
   bool connected = false;
+  bool interactiveConnectInProgress = false;
 
 protected:
   WifiHandler() = default;

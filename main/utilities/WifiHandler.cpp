@@ -1,5 +1,6 @@
 #include "WifiHandler.h"
 #include "definitions.h"
+#include "ui/lv_msg.h"
 #include <esp_event.h>
 #include <esp_log.h>
 #include <esp_netif.h>
@@ -14,7 +15,6 @@
 #include <nvs_handle.hpp>
 #include <string>
 #include <vector>
-#include "ui/lv_msg.h"
 
 static void wifi_connect_task(void *pvParameter) {
   auto *sp = static_cast<std::shared_ptr<utilities::wifi_credentials_t> *>(pvParameter);
@@ -56,16 +56,24 @@ void WifiHandler::wifi_event_handler(void *arg, esp_event_base_t event_base, int
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
     ESP_LOGI(TAG, "WifiEventHandler: WIFI_EVENT_STA_DISCONNECTED");
     xEventGroupSetBits(wifi_event_group, WIFI_FAIL_BIT);
-    lv_async_call([](void *){
-      lv_msg_send(MSG_WIFI_FAILED, NULL);
-    }, nullptr);
+    const bool suppressGlobalPopup = self->interactiveConnectInProgress;
+    self->interactiveConnectInProgress = false; // Clear flag after reading it
+    lv_async_call(
+        [](void *arg) {
+          bool suppress = arg != nullptr;
+          WifiFailedPayload payload{WifiFailedSource::Disconnected, suppress};
+          lv_msg_send(MSG_WIFI_FAILED, &payload);
+        },
+        suppressGlobalPopup ? self : nullptr);
     self->stopMdnsSearchLoop();
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     ESP_LOGI(TAG, "WifiEventHandler: IP_EVENT_STA_GOT_IP");
     xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
-    lv_async_call([](void *){
-      lv_msg_send(MSG_WIFI_CONNECTED, NULL);
-    }, nullptr);
+    lv_async_call(
+        [](void *) {
+          lv_msg_send(MSG_WIFI_CONNECTED, NULL);
+        },
+        nullptr);
     xTaskCreate(
         [](void *parameters) {
           WifiHandler *self = static_cast<WifiHandler *>(parameters);
@@ -141,12 +149,17 @@ void WifiHandler::loadAndConnect() {
     return;
   }
 
-  xTaskCreate(&::wifi_connect_task, "wifi_connect_task", 4096,
-              new std::shared_ptr<wifi_credentials_t>(creds), tskIDLE_PRIORITY, nullptr);
+  interactiveConnectInProgress = false;
+  xTaskCreate(&::wifi_connect_task, "wifi_connect_task", 4096, new std::shared_ptr<wifi_credentials_t>(creds),
+              tskIDLE_PRIORITY, nullptr);
 }
 
 void WifiHandler::noConnectionSaved() {
-  lv_async_call([](void *) { lv_msg_send(MSG_WIFI_NOT_SAVED, NULL); }, nullptr);
+  lv_async_call(
+      [](void *) {
+        lv_msg_send(MSG_WIFI_NOT_SAVED, NULL);
+      },
+      nullptr);
 }
 
 void WifiHandler::WifiConnectTask(void *pvParameter) {
@@ -172,7 +185,15 @@ void WifiHandler::WifiConnectTask(void *pvParameter) {
   esp_err_t err = esp_wifi_connect();
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "wifi connect failed: %s", esp_err_to_name(err));
-    lv_async_call([](void *) { lv_msg_send(MSG_WIFI_FAILED, NULL); }, nullptr);
+    const bool suppressGlobalPopup = interactiveConnectInProgress;
+    lv_async_call(
+        [](void *arg) {
+          bool suppress = arg != nullptr;
+          WifiFailedPayload payload{WifiFailedSource::ConnectAttempt, suppress};
+          lv_msg_send(MSG_WIFI_FAILED, &payload);
+        },
+        suppressGlobalPopup ? this : nullptr);
+    interactiveConnectInProgress = false;
     vTaskDelete(NULL);
     return;
   }
@@ -183,6 +204,11 @@ void WifiHandler::WifiConnectTask(void *pvParameter) {
       xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdTRUE, pdFALSE, pdMS_TO_TICKS(10000));
 
   connected = bits & WIFI_CONNECTED_BIT;
+  // interactiveConnectInProgress cleared in event handler (disconnect) or here (success/timeout)
+  if (connected || !(bits & WIFI_FAIL_BIT)) {
+    // Clear on success or timeout (no failure event fired yet)
+    interactiveConnectInProgress = false;
+  }
 
   vTaskDelete(NULL);
 }
@@ -193,6 +219,7 @@ void WifiHandler::create_wifi_connect_task(const char *ssid, const char *passwor
   strncpy(creds->password, password, sizeof(creds->password));
   creds->wifiHandler = shared_from_this();
 
+  interactiveConnectInProgress = true;
   xTaskCreate(&::wifi_connect_task, "wifi_connect_task", 4096,
               new std::shared_ptr<utilities::wifi_credentials_t>(creds), tskIDLE_PRIORITY, nullptr);
 }
@@ -389,7 +416,11 @@ void WifiHandler::addWithrottleDeviceFromResult(mdns_result_t *r) {
       existing.ip = dev.ip.empty() ? existing.ip : dev.ip;
       existing.txt = dev.txt.empty() ? existing.txt : dev.txt;
       ESP_LOGI(TAG, "mDNS: updated existing device (hostname): %s", existing.hostname.c_str());
-      lv_async_call([](void *) { lv_msg_send(MSG_MDNS_DEVICE_CHANGED, NULL); }, nullptr);
+      lv_async_call(
+          [](void *) {
+            lv_msg_send(MSG_MDNS_DEVICE_CHANGED, NULL);
+          },
+          nullptr);
       return;
     }
 
@@ -400,14 +431,22 @@ void WifiHandler::addWithrottleDeviceFromResult(mdns_result_t *r) {
       existing.hostname = existing.hostname.empty() ? dev.hostname : existing.hostname;
       existing.txt = dev.txt.empty() ? existing.txt : dev.txt;
       ESP_LOGI(TAG, "mDNS: updated existing device (ip): %s", existing.ip.c_str());
-      lv_async_call([](void *) { lv_msg_send(MSG_MDNS_DEVICE_CHANGED, NULL); }, nullptr);
+      lv_async_call(
+          [](void *) {
+            lv_msg_send(MSG_MDNS_DEVICE_CHANGED, NULL);
+          },
+          nullptr);
       return;
     }
   }
 
   // not found => append
   withrottle_devices.push_back(std::move(dev));
-  lv_async_call([](void *) { lv_msg_send(MSG_MDNS_DEVICE_ADDED, NULL); }, nullptr);
+  lv_async_call(
+      [](void *) {
+        lv_msg_send(MSG_MDNS_DEVICE_ADDED, NULL);
+      },
+      nullptr);
   ESP_LOGI(TAG, "mDNS: adding new device (ip): %s devices: %d", dev.ip.c_str(), (int)withrottle_devices.size());
 }
 

@@ -31,18 +31,6 @@ void TurnoutListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScree
   btn_back = makeButton(lvObj_, "Back", 100, 40, LV_ALIGN_BOTTOM_LEFT, 8, -12, "button.secondary");
   lv_obj_add_event_cb(btn_back, &TurnoutListScreen::event_back_trampoline, LV_EVENT_CLICKED, this);
 
-  subscribe_failed = lv_msg_subscribe(
-      MSG_WIFI_FAILED,
-      [](lv_msg_t *msg) {
-        TurnoutListScreen *self = static_cast<TurnoutListScreen *>(lv_msg_get_user_data(msg));
-        if (!self || self->isCleanedUp)
-          return;
-        ESP_LOGI(TAG, "Not connected to wifi");
-        auto firstScreen = FirstScreen::instance();
-        firstScreen->showScreen();
-      },
-      this);
-
   turnout_changed_sub = lv_msg_subscribe(
       MSG_DCC_TURNOUT_CHANGED,
       [](lv_msg_t *msg) {
@@ -93,9 +81,9 @@ void TurnoutListScreen::refreshList() {
 }
 
 void TurnoutListScreen::unsubscribeAll() {
-  if (subscribe_failed) {
-    lv_msg_unsubscribe(subscribe_failed);
-    subscribe_failed = nullptr;
+  if (turnout_changed_sub) {
+    lv_msg_unsubscribe(turnout_changed_sub);
+    turnout_changed_sub = nullptr;
   }
 }
 

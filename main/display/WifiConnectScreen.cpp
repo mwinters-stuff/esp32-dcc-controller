@@ -44,19 +44,24 @@ void WifiConnectScreen::wifi_connected_callback(lv_msg_t *msg) {
       1500, this);
 }
 
-void WifiConnectScreen::wifi_failed_callback(lv_msg_t *msg) {
-  if (isCleanedUp)
-    return;
-  lv_label_set_text(lbl_status, "Connection Failed");
-  lv_obj_add_flag(lbl_spinner, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clear_flag(kb_keyboard, LV_OBJ_FLAG_HIDDEN);
-}
-
 void WifiConnectScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
   createScreen();
   wifi_connected_sub = lv_msg_subscribe(MSG_WIFI_CONNECTED, &WifiConnectScreen::wifi_connected_trampoline, this);
   wifi_failed_sub = lv_msg_subscribe(MSG_WIFI_FAILED, &WifiConnectScreen::wifi_failed_trampoline, this);
+}
+
+void WifiConnectScreen::wifi_failed_callback(lv_msg_t *msg) {
+  if (isCleanedUp)
+    return;
+
+  auto *payload = static_cast<const WifiFailedPayload *>(lv_msg_get_payload(msg));
+  if (payload == nullptr || !payload->suppressGlobalPopup || payload->source != WifiFailedSource::ConnectAttempt)
+    return;
+
+  lv_label_set_text(lbl_status, "Connection Failed");
+  lv_obj_add_flag(lbl_spinner, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(kb_keyboard, LV_OBJ_FLAG_HIDDEN);
 }
 
 void WifiConnectScreen::cleanUp() {
@@ -71,7 +76,6 @@ void WifiConnectScreen::cleanUp() {
     lv_msg_unsubscribe(wifi_failed_sub);
     wifi_failed_sub = nullptr;
   }
-
   lbl_title = nullptr;
   lbl_subtitle = nullptr;
   vert_container = nullptr;
@@ -102,15 +106,15 @@ void WifiConnectScreen::createScreen() {
 
   lbl_pwd = makeLabel(vert_container, "Password:", LV_ALIGN_TOP_LEFT, 0, 0, "label.main");
 
-  pwd_container = makeHorizontalLayout(vert_container, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  pwd_container = makeHorizontalLayout(vert_container, 300, 40);
 
   // // Create the password text area
   ta_password = makeTextArea(pwd_container, "Enter Password", true, true);
-  lv_obj_set_height(ta_password, 40);
   lv_obj_set_style_text_font(ta_password, &lv_font_montserrat_20, 0);
 
   //     // Create the show/hide button
   bs_password_show = makeButtonSymbol(pwd_container, LV_SYMBOL_EYE_OPEN, 40, 40, true);
+  lv_obj_set_flex_grow(bs_password_show, 0); // Button takes only necessary space
   lv_obj_add_event_cb(bs_password_show, &WifiConnectScreen::event_password_show_trampoline, LV_EVENT_VALUE_CHANGED,
                       this);
 

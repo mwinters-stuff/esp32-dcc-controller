@@ -56,15 +56,6 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
       },
       this);
 
-  subscribe_failed = lv_msg_subscribe(
-      MSG_WIFI_FAILED,
-      [](lv_msg_t *msg) {
-        ESP_LOGI(TAG, "Not connected to wifi");
-        auto firstScreen = FirstScreen::instance();
-        firstScreen->showScreen();
-      },
-      this);
-
   connect_success = lv_msg_subscribe(
       MSG_DCC_CONNECTION_SUCCESS,
       [](lv_msg_t *msg) {
@@ -109,10 +100,6 @@ void ConnectDCCScreen::refreshMdnsList() {
 }
 
 void ConnectDCCScreen::resetMsgHandlers() {
-  if (subscribe_failed) {
-    lv_msg_unsubscribe(subscribe_failed);
-    subscribe_failed = nullptr;
-  }
   if (mdns_added_sub) {
     lv_msg_unsubscribe(mdns_added_sub);
     mdns_added_sub = nullptr;

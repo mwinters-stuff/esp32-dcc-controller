@@ -77,21 +77,6 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
 
   disableButtons();
 
-  auto wifiHandler = utilities::WifiHandler::instance();
-
-  subscribe_failed = lv_msg_subscribe(
-      MSG_WIFI_FAILED,
-      [](lv_msg_t *msg) {
-        DCCMenu *self = static_cast<DCCMenu *>(lv_msg_get_user_data(msg));
-        if (!self || self->isCleanedUp)
-          return;
-        ESP_LOGI(TAG, "Not connected to wifi");
-        self->cleanUp();
-        auto firstScreen = FirstScreen::instance();
-        firstScreen->showScreen();
-      },
-      this);
-
   subscribe_dcc_roster_received = lv_msg_subscribe(
       MSG_DCC_ROSTER_LIST_RECEIVED,
       [](lv_msg_t *msg) {
@@ -183,15 +168,6 @@ void DCCMenu::enableIfReceivedLists() {
 }
 
 void DCCMenu::unsubscribeAll() {
-  if (subscribe_failed != nullptr) {
-    lv_msg_unsubscribe(subscribe_failed);
-    subscribe_failed = nullptr;
-  }
-  if (subscribe_not_saved != nullptr) {
-    lv_msg_unsubscribe(subscribe_not_saved);
-    subscribe_not_saved = nullptr;
-  }
-
   if (subscribe_dcc_roster_received != nullptr) {
     lv_msg_unsubscribe(subscribe_dcc_roster_received);
     subscribe_dcc_roster_received = nullptr;

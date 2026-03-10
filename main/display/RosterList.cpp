@@ -35,19 +35,6 @@ void RosterListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
   // btn_connect = makeButton(lvObj_, "Connect", 100, 40, LV_ALIGN_BOTTOM_RIGHT, -8, -12, "button.primary");
   // lv_obj_add_event_cb(btn_connect, &RosterListScreen::event_connect_trampoline, LV_EVENT_CLICKED, this);
 
-  subscribe_failed = lv_msg_subscribe(
-      MSG_WIFI_FAILED,
-      [](lv_msg_t *msg) {
-        RosterListScreen *self = static_cast<RosterListScreen *>(lv_msg_get_user_data(msg));
-        if (!self || self->isCleanedUp)
-          return;
-        ESP_LOGI(TAG, "Not connected to wifi");
-        self->cleanUp();
-        auto firstScreen = FirstScreen::instance();
-        firstScreen->showScreen();
-      },
-      this);
-
   refreshList();
 }
 
@@ -69,13 +56,13 @@ void RosterListScreen::refreshList() {
   lv_obj_clean(list_roster);
   auto loco = DCCExController::Loco::getFirst();
   while (loco != nullptr) {
-    if(loco->getSource() == DCCExController::LocoSource::LocoSourceRoster) {
+    if (loco->getSource() == DCCExController::LocoSource::LocoSourceRoster) {
       const char *name = loco->getName();
-      if(name != nullptr && strlen(name) > 0) {
-      ESP_LOGI(TAG, "Roster ID=%d, Name=%s", loco->getAddress(), name);
+      if (name != nullptr && strlen(name) > 0) {
+        ESP_LOGI(TAG, "Roster ID=%d, Name=%s", loco->getAddress(), name);
 
-      auto listItem = std::make_shared<RosterListItem>(list_roster, listItems.size(), loco->getAddress(), name);
-      listItems.push_back(listItem);
+        auto listItem = std::make_shared<RosterListItem>(list_roster, listItems.size(), loco->getAddress(), name);
+        listItems.push_back(listItem);
       } else {
         ESP_LOGI(TAG, "Roster ID=%d has no name, skipping", loco->getAddress());
       }
@@ -86,12 +73,7 @@ void RosterListScreen::refreshList() {
   }
 }
 
-void RosterListScreen::unsubscribeAll() {
-  if (subscribe_failed) {
-    lv_msg_unsubscribe(subscribe_failed);
-    subscribe_failed = nullptr;
-  }
-}
+void RosterListScreen::unsubscribeAll() {}
 
 void RosterListScreen::cleanUp() {
   ESP_LOGI(TAG, "Cleaning up RosterListScreen");

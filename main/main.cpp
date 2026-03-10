@@ -3,6 +3,7 @@
 #include "display/DisplayManager.h"
 #include "display/FirstScreen.h"
 #include "display/ManualCalibration.h"
+#include "display/MessageBox.h"
 #include "display/WifiConnectScreen.h"
 #include "millis.h"
 #include "ui/LvglTheme.h"
@@ -22,6 +23,12 @@
 #include <string>
 
 static const char *TAG = "main";
+
+namespace {
+
+void return_to_main_screen(void *) { display::FirstScreen::instance()->showScreen(); }
+
+} // namespace
 
 static uint32_t lv_tick_ms_cb() { return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL); }
 
@@ -61,7 +68,6 @@ void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data) {
   int32_t x = 0;
   int32_t y = 0;
   bool touched = DisplayManager::gfx.getTouch(&x, &y);
-
 
   // Adjust these to match your hardware / rotation
   // Try FLIP_Y = true to fix upside-down touches
@@ -144,12 +150,33 @@ void setup() {
   auto theme = std::make_shared<ui::LvglTheme>("Default");
   ui::LvglTheme::setActive(theme);
 
-  // Global handler: whenever the DCC server drops, return to the home screen
-  // regardless of which screen is currently active.
+  // Global handlers: show a message and return to the home screen once confirmed.
+  lv_msg_subscribe(
+      MSG_WIFI_FAILED,
+      [](lv_msg_t *msg) {
+        auto *payload = static_cast<const WifiFailedPayload *>(lv_msg_get_payload(msg));
+        if (payload != nullptr && payload->suppressGlobalPopup) {
+          ESP_LOGI(TAG, "Skipping global WiFi failure popup (local handler exception)");
+          return;
+        }
+        lv_async_call(
+            [](void *) {
+              display::showMessageBox("WiFi Failed", "WiFi connection was lost.", display::MessageBoxState::Error,
+                                      return_to_main_screen, nullptr);
+            },
+            nullptr);
+      },
+      nullptr);
+
   lv_msg_subscribe(
       MSG_DCC_DISCONNECTED,
       [](lv_msg_t *) {
-        display::FirstScreen::instance()->showScreen();
+        lv_async_call(
+            [](void *) {
+              display::showMessageBox("DCC Disconnected", "Connection to the DCC server was lost.",
+                                      display::MessageBoxState::Warning, return_to_main_screen, nullptr);
+            },
+            nullptr);
       },
       nullptr);
 
@@ -189,7 +216,7 @@ extern "C" void app_main() {
   setup();
 
   while (true) {
-    uint32_t next_ms = lv_timer_handler();
+    lv_timer_handler();
     vTaskDelay(pdMS_TO_TICKS(10));
 
     // --- Inactivity check (using LVGL's built-in tracking) ---
