@@ -67,6 +67,10 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   btn_turntables = makeButton(lvObj_, "Turntables", 200, 48, LV_ALIGN_CENTER, 0, 60, "button.primary");
   lv_obj_add_event_cb(btn_turntables, &DCCMenu::event_turntables_trampoline, LV_EVENT_CLICKED, this);
 
+  // Icon-only refresh button
+  btn_refresh = makeButton(lvObj_, LV_SYMBOL_REFRESH, 48, 48, LV_ALIGN_CENTER, 0, 120, "button.secondary");
+  lv_obj_add_event_cb(btn_refresh, &DCCMenu::event_refresh_trampoline, LV_EVENT_CLICKED, this);
+
   // "Close" button
   btn_close = makeButton(lvObj_, "Close", 200, 48, LV_ALIGN_CENTER, 0, 180, "button.secondary");
   lv_obj_add_event_cb(btn_close, &DCCMenu::event_back_trampoline, LV_EVENT_CLICKED, this);
@@ -160,19 +164,19 @@ void DCCMenu::enableIfReceivedLists() {
     return;
   }
 
-  if (dccProtocol->receivedRoster()) {
+  if (dccProtocol->receivedRoster() && dccProtocol->getRosterCount() > 0) {
     ESP_LOGI(TAG, "DCC Roster list already received, enabling roster button");
     lv_obj_clear_state(btn_roster, LV_STATE_DISABLED);
   }
-  if (dccProtocol->receivedTurnoutList()) {
+  if (dccProtocol->receivedTurnoutList() && dccProtocol->getTurnoutCount() > 0) {
     ESP_LOGI(TAG, "DCC Turnout list already received, enabling turnouts button");
     lv_obj_clear_state(btn_turnouts, LV_STATE_DISABLED);
   }
-  if (dccProtocol->receivedRouteList()) {
+  if (dccProtocol->receivedRouteList() && dccProtocol->getRouteCount() > 0) {
     ESP_LOGI(TAG, "DCC Route list already received, enabling routes button");
     lv_obj_clear_state(btn_routes, LV_STATE_DISABLED);
   }
-  if (dccProtocol->receivedTurntableList()) {
+  if (dccProtocol->receivedTurntableList() && dccProtocol->getTurntableCount() > 0) {
     ESP_LOGI(TAG, "DCC Turntable list already received, enabling turntables button");
     lv_obj_clear_state(btn_turntables, LV_STATE_DISABLED);
   }
@@ -215,6 +219,7 @@ void DCCMenu::cleanUp() {
   btn_turnouts = nullptr;
   btn_routes = nullptr;
   btn_turntables = nullptr;
+  btn_refresh = nullptr;
   btn_close = nullptr;
   lbl_title = nullptr;
   lbl_status = nullptr;
@@ -255,6 +260,22 @@ void DCCMenu::button_turntables_callback(lv_event_t *e) {
 
     auto turntableListScreen = TurnTableListScreen::instance();
     turntableListScreen->showScreen(shared_from_this());
+  }
+}
+
+void DCCMenu::button_refresh_callback(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    ESP_LOGI(TAG, "Refresh button clicked!");
+    disableButtons();
+    auto wifiControl = utilities::WifiControl::instance();
+    auto dccProtocol = wifiControl->dccProtocol();
+    if (dccProtocol == nullptr) {
+      ESP_LOGW(TAG, "DCC Protocol is null, cannot refresh lists");
+      return;
+    }
+    dccProtocol->refreshAllLists();
+    if (lbl_status)
+      lv_label_set_text(lbl_status, "Refreshing lists...");
   }
 }
 

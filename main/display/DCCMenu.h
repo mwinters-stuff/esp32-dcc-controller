@@ -14,12 +14,12 @@ public:
     return s;
   }
 
-  ~DCCMenu() override = default; 
+  ~DCCMenu() override = default;
   void show(lv_obj_t *parent = nullptr, std::weak_ptr<Screen> parentScreen = std::weak_ptr<Screen>{}) override;
   void cleanUp() override;
 
   DCCMenu(const DCCMenu &) = delete;
-  DCCMenu &operator=(const DCCMenu &) = delete; 
+  DCCMenu &operator=(const DCCMenu &) = delete;
   void enableButtons(bool enableConnect);
   void disableButtons();
   void unsubscribeAll();
@@ -32,9 +32,11 @@ public:
   void button_turnouts_callback(lv_event_t *e);
   void button_routes_callback(lv_event_t *e);
   void button_turntables_callback(lv_event_t *e);
+  void button_refresh_callback(lv_event_t *e);
   void button_back_callback(lv_event_t *e);
+
 protected:
-  DCCMenu() = default;  
+  DCCMenu() = default;
 
   static void event_roster_trampoline(lv_event_t *e) {
     auto *self = static_cast<DCCMenu *>(lv_event_get_user_data(e));
@@ -54,11 +56,16 @@ protected:
       self->button_routes_callback(e);
   }
 
-
   static void event_turntables_trampoline(lv_event_t *e) {
     auto *self = static_cast<DCCMenu *>(lv_event_get_user_data(e));
     if (self)
       self->button_turntables_callback(e);
+  }
+
+  static void event_refresh_trampoline(lv_event_t *e) {
+    auto *self = static_cast<DCCMenu *>(lv_event_get_user_data(e));
+    if (self)
+      self->button_refresh_callback(e);
   }
 
   static void event_back_trampoline(lv_event_t *e) {
@@ -68,6 +75,7 @@ protected:
   }
 
   void enableIfReceivedLists();
+
 private:
   lv_msg_sub_dsc_t *subscribe_failed = nullptr;
   lv_msg_sub_dsc_t *subscribe_not_saved = nullptr;
@@ -86,8 +94,8 @@ private:
   lv_obj_t *btn_turnouts;
   lv_obj_t *btn_routes;
   lv_obj_t *btn_turntables;
+  lv_obj_t *btn_refresh;
   lv_obj_t *btn_close;
 };
 
 } // namespace display
-
