@@ -14,6 +14,7 @@
 #include <esp_log.h>
 #include <esp_netif.h>
 #include <esp_task_wdt.h>
+#include <esp_timer.h>
 #include <esp_wifi.h>
 #include <lvgl.h>
 #include <memory>
@@ -21,6 +22,8 @@
 #include <string>
 
 static const char *TAG = "main";
+
+static uint32_t lv_tick_ms_cb() { return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL); }
 
 // --- LVGL Variables ---
 static lv_display_t *lvgl_disp = nullptr;
@@ -59,6 +62,13 @@ void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data) {
   int32_t x = 0;
   int32_t y = 0;
   bool touched = DisplayManager::gfx.getTouch(&x, &y);
+
+  // static uint32_t poll_count = 0;
+  // poll_count++;
+  // if ((poll_count % 100U) == 0U) {
+  //   ESP_LOGI(TAG, "touch poll count=%lu touched=%d raw=(%ld,%ld)", static_cast<unsigned long>(poll_count),
+  //            touched ? 1 : 0, static_cast<long>(x), static_cast<long>(y));
+  // }
 
   // Adjust these to match your hardware / rotation
   // Try FLIP_Y = true to fix upside-down touches
@@ -114,15 +124,26 @@ void setup() {
   }
 
   lv_init();
+  lv_tick_set_cb(lv_tick_ms_cb);
   auto buffer_size = DisplayManager::bufferSize();
   lv_color_t *buf1 = new lv_color_t[buffer_size];
   lv_color_t *buf2 = new lv_color_t[buffer_size];
   lvgl_disp = lv_display_create(DisplayManager::gfx.screenWidth, DisplayManager::gfx.screenHeight);
+  if (!lvgl_disp) {
+    ESP_LOGE(TAG, "lv_display_create failed");
+    return;
+  }
+  lv_display_set_default(lvgl_disp);
   lv_display_set_buffers(lvgl_disp, buf1, buf2, buffer_size * sizeof(lv_color_t), LV_DISPLAY_RENDER_MODE_PARTIAL);
   lv_display_set_flush_cb(lvgl_disp, DisplayManager::disp_flush);
 
   lv_indev_t *indev = lv_indev_create();
+  if (!indev) {
+    ESP_LOGE(TAG, "lv_indev_create failed");
+    return;
+  }
   lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+  lv_indev_set_display(indev, lvgl_disp);
   lv_indev_set_read_cb(indev, my_touchpad_read);
   ESP_LOGI(TAG, "Touch indev registered: %p", indev);
 
@@ -174,12 +195,19 @@ extern "C" void app_main() {
 
   setup();
 
+  // uint32_t last_lvgl_heartbeat = millis();
+
   while (true) {
-    lv_timer_handler();
+    uint32_t next_ms = lv_timer_handler();
     vTaskDelay(pdMS_TO_TICKS(10));
 
-    // --- Inactivity check ---
     uint32_t now = millis();
+    // if (now - last_lvgl_heartbeat >= 1000) {
+    //   ESP_LOGI(TAG, "LVGL loop alive, next timer in %lu ms", static_cast<unsigned long>(next_ms));
+    //   last_lvgl_heartbeat = now;
+    // }
+
+    // --- Inactivity check ---
     if (!displaySleeping && (now - lastActivityTime > INACTIVITY_TIMEOUT_MS)) {
       display_set_sleep(true);
       displaySleeping = true;
