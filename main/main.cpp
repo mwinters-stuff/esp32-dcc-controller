@@ -1,3 +1,4 @@
+#include "LGFX_ILI9488_S3.hpp"
 #include "definitions.h"
 #include "display/DisplayManager.h"
 #include "display/FirstScreen.h"
@@ -6,7 +7,6 @@
 #include "millis.h"
 #include "ui/LvglTheme.h"
 #include "utilities/WifiHandler.h"
-#include <LGFX_ILI9488_S3.hpp>
 #include <LovyanGFX.hpp>
 #include <atomic>
 #include <chrono>
@@ -28,8 +28,7 @@ static uint32_t lv_tick_ms_cb() { return static_cast<uint32_t>(esp_timer_get_tim
 // --- LVGL Variables ---
 static lv_display_t *lvgl_disp = nullptr;
 
-// --- Inactivity tracking ---
-static uint64_t lastActivityTime = 0;
+// --- Display sleep tracking ---
 static bool displaySleeping = false;
 constexpr uint32_t INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
@@ -63,12 +62,6 @@ void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data) {
   int32_t y = 0;
   bool touched = DisplayManager::gfx.getTouch(&x, &y);
 
-  // static uint32_t poll_count = 0;
-  // poll_count++;
-  // if ((poll_count % 100U) == 0U) {
-  //   ESP_LOGI(TAG, "touch poll count=%lu touched=%d raw=(%ld,%ld)", static_cast<unsigned long>(poll_count),
-  //            touched ? 1 : 0, static_cast<long>(x), static_cast<long>(y));
-  // }
 
   // Adjust these to match your hardware / rotation
   // Try FLIP_Y = true to fix upside-down touches
@@ -91,11 +84,12 @@ void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data) {
     data->point.y = ty;
     data->state = LV_INDEV_STATE_PRESSED;
 
+    lv_display_trigger_activity(lvgl_disp); // reset inactivity timer on touch
+
     if (displaySleeping) {
       display_set_sleep(false);
       displaySleeping = false;
       data->state = LV_INDEV_STATE_RELEASED;
-      lastActivityTime = millis();
     }
   } else {
     data->state = LV_INDEV_STATE_RELEASED;
@@ -180,7 +174,6 @@ void setup() {
     break;
   }
 
-  lastActivityTime = millis();
   ESP_LOGI(TAG, "Setup complete. UI should be visible.");
 }
 
@@ -195,22 +188,17 @@ extern "C" void app_main() {
 
   setup();
 
-  // uint32_t last_lvgl_heartbeat = millis();
-
   while (true) {
     uint32_t next_ms = lv_timer_handler();
     vTaskDelay(pdMS_TO_TICKS(10));
 
-    uint32_t now = millis();
-    // if (now - last_lvgl_heartbeat >= 1000) {
-    //   ESP_LOGI(TAG, "LVGL loop alive, next timer in %lu ms", static_cast<unsigned long>(next_ms));
-    //   last_lvgl_heartbeat = now;
-    // }
-
-    // --- Inactivity check ---
-    if (!displaySleeping && (now - lastActivityTime > INACTIVITY_TIMEOUT_MS)) {
-      display_set_sleep(true);
-      displaySleeping = true;
+    // --- Inactivity check (using LVGL's built-in tracking) ---
+    if (!displaySleeping) {
+      uint32_t inactive_ms = lv_display_get_inactive_time(lvgl_disp);
+      if (inactive_ms > INACTIVITY_TIMEOUT_MS) {
+        display_set_sleep(true);
+        displaySleeping = true;
+      }
     }
   }
 }
