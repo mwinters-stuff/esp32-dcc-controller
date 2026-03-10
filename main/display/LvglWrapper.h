@@ -1,28 +1,32 @@
 #pragma once
 
+#include "ui/LvglTheme.h"
 #include <lvgl.h>
 #include <string>
-#include "ui/LvglTheme.h"
 
 namespace display {
 
-  void setStyle(lv_obj_t *widget, const std::string &styleName);
-  void setStylePart(lv_obj_t *widget, const std::string &styleName, lv_part_t part);
+void setStyle(lv_obj_t *widget, const std::string &styleName);
+void setStylePart(lv_obj_t *widget, const std::string &styleName, lv_style_selector_t selector);
 
+lv_obj_t *getActiveScreen();
+lv_obj_t *makeLabel(lv_obj_t *parent, const char *text, lv_align_t align, int32_t x_ofs, int32_t y_ofs,
+                    const std::string &styleName = "", const lv_font_t *font = nullptr);
+lv_obj_t *makeButton(lv_obj_t *parent, const char *text, int32_t width, int32_t height, lv_align_t align, int32_t x_ofs,
+                     int32_t y_ofs, const std::string &styleName = "", const lv_font_t *font = nullptr);
+lv_obj_t *makeListView(lv_obj_t *parent, int32_t x, int32_t y, int32_t width, int32_t height,
+                       const std::string &styleName = "");
+lv_obj_t *makeSpinner(lv_obj_t *parent, int32_t x, int32_t y, int32_t size, uint16_t speed = 1000);
+lv_obj_t *makeVerticalLayout(lv_obj_t *parent, int32_t width = LV_SIZE_CONTENT, int32_t height = LV_SIZE_CONTENT);
+lv_obj_t *makeHorizontalLayout(lv_obj_t *parent, int32_t width = LV_SIZE_CONTENT, int32_t height = LV_SIZE_CONTENT);
+lv_obj_t *makeTextArea(lv_obj_t *parent, const std::string &placeholder = "", bool password = false,
+                       bool one_line = true);
+lv_obj_t *makeButtonSymbol(lv_obj_t *parent, const std::string &symbol, const int32_t width = 40,
+                           const int32_t height = 40, bool checkable = false);
+lv_obj_t *makeKeyboard(lv_obj_t *parent);
+// lv_obj_t *makeTabView(lv_obj_t *parent, lv_align_t align, int x_ofs, int y_ofs, int width, int height);
 
-  lv_obj_t* getActiveScreen();
-  lv_obj_t* makeLabel(lv_obj_t* parent, const char* text, lv_align_t align, lv_coord_t x_ofs, lv_coord_t y_ofs, const std::string &styleName = "", const lv_font_t* font = nullptr);
-  lv_obj_t* makeButton(lv_obj_t* parent, const char* text, lv_coord_t width, lv_coord_t height, lv_align_t align, lv_coord_t x_ofs, lv_coord_t y_ofs, const std::string &styleName = "", const lv_font_t* font = nullptr);
-  lv_obj_t* makeListView(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t width, lv_coord_t height, const std::string &styleName = "");
-  lv_obj_t* makeSpinner(lv_obj_t* parent, lv_coord_t x, lv_coord_t y, lv_coord_t size, uint16_t speed = 1000);
-  lv_obj_t *makeVerticalLayout(lv_obj_t *parent, lv_coord_t width = LV_SIZE_CONTENT,lv_coord_t height = LV_SIZE_CONTENT);
-  lv_obj_t *makeHorizontalLayout(lv_obj_t *parent, lv_coord_t width = LV_SIZE_CONTENT,lv_coord_t height = LV_SIZE_CONTENT);
-  lv_obj_t *makeTextArea(lv_obj_t *parent, const std::string &placeholder = "", bool password = false, bool one_line = true);
-  lv_obj_t* makeButtonSymbol(lv_obj_t* parent, const std::string &symbol, const lv_coord_t width = 40, const lv_coord_t height = 40, bool checkable = false);
-  lv_obj_t* makeKeyboard(lv_obj_t* parent);
-  lv_obj_t* makeTabView(lv_obj_t* parent, lv_align_t align, int x_ofs, int y_ofs, int width, int height);
-  
-  void lv_list_set_btn_text(lv_obj_t* btn, const char* text);
-  void lv_list_set_btn_icon(lv_obj_t *btn, const lv_img_dsc_t *icon);
-  lv_obj_t * lv_list_add_btn_mode(lv_obj_t * list, const void * icon, const char * txt, const lv_label_long_mode_t mode);
-}
+void lv_list_set_btn_text(lv_obj_t *btn, const char *text);
+void lv_list_set_btn_icon(lv_obj_t *btn, const lv_image_dsc_t *icon);
+lv_obj_t *lv_list_add_btn_mode(lv_obj_t *list, const void *icon, const char *txt, const lv_label_long_mode_t mode);
+} // namespace display

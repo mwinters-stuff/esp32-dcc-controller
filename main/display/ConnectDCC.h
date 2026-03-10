@@ -36,10 +36,10 @@ private:
   std::vector<std::shared_ptr<DCCConnectListItem>> detectedListItems;
   std::shared_ptr<DCCConnectListItem> savedListItem;
 
-  void *mdns_added_sub = nullptr;
-  void *mdns_changed_sub = nullptr;
-  void *subscribe_failed = nullptr;
-  void *connect_success = nullptr;
+  lv_msg_sub_dsc_t *mdns_added_sub = nullptr;
+  lv_msg_sub_dsc_t *mdns_changed_sub = nullptr;
+  lv_msg_sub_dsc_t *subscribe_failed = nullptr;
+  lv_msg_sub_dsc_t *connect_success = nullptr;
 
 
   bool isCleanedUp = false;

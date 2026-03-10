@@ -1,6 +1,6 @@
 /**
  * @file lv_conf.h
- * Configuration file for v8.3.0-dev
+ * Configuration file for v9.5.0
  */
 
 /*
@@ -26,23 +26,11 @@
 /*Color depth: 1 (1 byte per pixel), 8 (RGB332), 16 (RGB565), 32 (ARGB8888)*/
 #define LV_COLOR_DEPTH 16
 
-/*Swap the 2 bytes of RGB565 color. Useful if the display has an 8-bit interface (e.g. SPI)*/
-#define LV_COLOR_16_SWAP 0
-
-/*Enable more complex drawing routines to manage screens transparency.
- *Can be used if the UI is above another layer, e.g. an OSD menu or video player.
- *Requires `LV_COLOR_DEPTH = 32` colors and the screen's `bg_opa` should be set to non LV_OPA_COVER value*/
-#define LV_COLOR_SCREEN_TRANSP 0
-
-/* Adjust color mix functions rounding. GPUs might calculate color mix (blending) differently.
- * 0: round down, 64: round up from x.75, 128: round up from half, 192: round up from x.25, 254: round up */
-#define LV_COLOR_MIX_ROUND_OFS (LV_COLOR_DEPTH == 32 ? 0: 128)
-
 /*Images pixels with this color will not be drawn if they are chroma keyed)*/
 #define LV_COLOR_CHROMA_KEY lv_color_hex(0x00ff00)         /*pure green*/
 
 /*=========================
-   MEMORY SETTINGS
+     MEMORY SETTINGS
  *=========================*/
 
 /*1: use custom malloc/free, 0: use the built-in `lv_mem_alloc()` and `lv_mem_free()`*/
@@ -66,6 +54,9 @@
     #define LV_MEM_CUSTOM_REALLOC realloc
 #endif     /*LV_MEM_CUSTOM*/
 
+/*Keep LVGL in single-thread mode; `lv_timer_handler()` runs in app_main loop*/
+#define LV_USE_OS   LV_OS_NONE
+
 /*Number of the intermediate memory buffer used during rendering and other internal processing mechanisms.
  *You will see an error log message if there wasn't enough buffers. */
 #define LV_MEM_BUF_MAX_NUM 16
@@ -78,26 +69,14 @@
  *====================*/
 
 /*Default display refresh period. LVG will redraw changed areas with this period time*/
-#define LV_DISP_DEF_REFR_PERIOD 16      /*[ms]*/
+#define LV_DEF_REFR_PERIOD 16      /*[ms]*/
 
 /*Input device read period in milliseconds*/
 #define LV_INDEV_DEF_READ_PERIOD 30     /*[ms]*/
 
-/*Use a custom tick source that tells the elapsed time in milliseconds.
- *It removes the need to manually update the tick with `lv_tick_inc()`)*/
-/* 1. Enable the custom tick source */
-#define LV_TICK_CUSTOM 1
-
-#if LV_TICK_CUSTOM
-
-  /* 2. Include the required header */
-  #define LV_TICK_CUSTOM_INCLUDE "esp_timer.h"
-
-  /* 3. Define the expression to get the system time in milliseconds */
-  /* esp_timer_get_time() returns time in microseconds, so we divide by 1000 */
-  #define LV_TICK_CUSTOM_SYS_TIME_EXPR (esp_timer_get_time() / 1000)
-
-#endif /* LV_TICK_CUSTOM */
+/* LVGL 9 tick source is configured in code with:
+ * `lv_tick_set_cb(lv_tick_ms_cb)` in `main.cpp`.
+ * Keep this file free from legacy tick macros to avoid confusion. */
 
 /*Default Dot Per Inch. Used to initialize default sizes such as widgets sized, style paddings.
  *(Not so important, you can adjust it to modify default sizes and spaces)*/
@@ -110,23 +89,6 @@
 /*-------------
  * Drawing
  *-----------*/
-
-/*Enable complex draw engine.
- *Required to draw shadow, gradient, rounded corners, circles, arc, skew lines, image transformations or any masks*/
-#define LV_DRAW_COMPLEX 1
-#if LV_DRAW_COMPLEX != 0
-
-    /*Allow buffering some shadow calculation.
-    *LV_SHADOW_CACHE_SIZE is the max. shadow size to buffer, where shadow size is `shadow_width + radius`
-    *Caching has LV_SHADOW_CACHE_SIZE^2 RAM cost*/
-    #define LV_SHADOW_CACHE_SIZE 0
-
-    /* Set number of maximally cached circle data.
-    * The circumference of 1/4 circle are saved for anti-aliasing
-    * radius * 4 bytes are used per circle (the most often used radiuses are saved)
-    * 0: to disable caching */
-    #define LV_CIRCLE_CACHE_SIZE 4
-#endif /*LV_DRAW_COMPLEX*/
 
 /*Default image cache size. Image caching keeps the images opened.
  *If only the built-in image formats are used there is no real advantage of caching. (I.e. if no new image decoder is added)
@@ -157,48 +119,12 @@
     #define LV_DITHER_ERROR_DIFFUSION   0
 #endif
 
-/*Maximum buffer size to allocate for rotation.
- *Only used if software rotation is enabled in the display driver.*/
-#define LV_DISP_ROT_MAX_BUF (10*1024)
-
 /*-------------
- * GPU
+ * Drawing (LVGL 9)
  *-----------*/
 
-/*Use Arm's 2D acceleration library Arm-2D */
-#define LV_USE_GPU_ARM2D 0
-
-/*Use STM32's DMA2D (aka Chrom Art) GPU*/
-#define LV_USE_GPU_STM32_DMA2D 0
-#if LV_USE_GPU_STM32_DMA2D
-    /*Must be defined to include path of CMSIS header of target processor
-    e.g. "stm32f769xx.h" or "stm32f429xx.h"*/
-    #define LV_GPU_DMA2D_CMSIS_INCLUDE
-#endif
-
-/*Use NXP's PXP GPU iMX RTxxx platforms*/
-#define LV_USE_GPU_NXP_PXP 0
-#if LV_USE_GPU_NXP_PXP
-    /*1: Add default bare metal and FreeRTOS interrupt handling routines for PXP (lv_gpu_nxp_pxp_osa.c)
-    *   and call lv_gpu_nxp_pxp_init() automatically during lv_init(). Note that symbol SDK_OS_FREE_RTOS
-    *   has to be defined in order to use FreeRTOS OSA, otherwise bare-metal implementation is selected.
-    *0: lv_gpu_nxp_pxp_init() has to be called manually before lv_init()
-    */
-    #define LV_USE_GPU_NXP_PXP_AUTO_INIT 0
-#endif
-
-/*Use NXP's VG-Lite GPU iMX RTxxx platforms*/
-#define LV_USE_GPU_NXP_VG_LITE 0
-
-/*Use SDL renderer API*/
-#define LV_USE_GPU_SDL 0
-#if LV_USE_GPU_SDL
-    #define LV_GPU_SDL_INCLUDE_PATH <SDL2/SDL.h>
-    /*Texture cache size, 8MB by default*/
-    #define LV_GPU_SDL_LRU_SIZE (1024 * 1024 * 8)
-    /*Custom blend mode for mask drawing, disable if you need to link with older SDL2 lib*/
-    #define LV_GPU_SDL_CUSTOM_BLEND_MODE (SDL_VERSION_ATLEAST(2, 0, 6))
-#endif
+/*Use software rendering*/
+#define LV_USE_DRAW_SW 1
 
 /*-------------
  * Logging
@@ -279,8 +205,6 @@
     #define LV_SPRINTF_USE_FLOAT 0
 #endif  /*LV_SPRINTF_CUSTOM*/
 
-#define LV_USE_USER_DATA 1
-
 /*Garbage Collector settings
  *Used if lvgl is bound to higher level language and the memory is managed by that language*/
 #define LV_ENABLE_GC 0
@@ -326,9 +250,6 @@
 /*Export integer constant to binding. This macro is used with constants in the form of LV_<CONST> that
  *should also appear on LVGL binding API such as Micropython.*/
 #define LV_EXPORT_CONST_INT(int_value) struct _silence_gcc_warning /*The default value just prevents GCC warning*/
-
-/*Extend the default -32k..32k coordinate range to -4M..4M by using int32_t for coordinates instead of int16_t*/
-#define LV_USE_LARGE_COORD 0
 
 /*==================
  *   FONT USAGE
@@ -459,7 +380,7 @@
 
 #define LV_USE_DROPDOWN   1   /*Requires: lv_label*/
 
-#define LV_USE_IMG        1   /*Requires: lv_label*/
+#define LV_USE_IMAGE      1   /*Requires: lv_label*/
 
 #define LV_USE_LABEL      1
 #if LV_USE_LABEL
@@ -552,9 +473,6 @@
 
     /*0: Light mode; 1: Dark mode*/
     #define LV_THEME_DEFAULT_DARK 0
-
-    /*1: Enable grow on press*/
-    #define LV_THEME_DEFAULT_GROW 1
 
     /*Default transition time in [ms]*/
     #define LV_THEME_DEFAULT_TRANSITION_TIME 80

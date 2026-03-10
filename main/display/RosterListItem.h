@@ -16,7 +16,7 @@ public:
 
   RosterListItem(lv_obj_t *parent, size_t index, int address, std::string name)
       : parentObj(parent), index(index), address(address), name(std::move(name)) {
-    lvObj = lv_list_add_btn_mode(parent, LV_SYMBOL_FILE, getDisplayName().c_str(), LV_LABEL_LONG_DOT);
+    lvObj = lv_list_add_btn_mode(parent, LV_SYMBOL_FILE, getDisplayName().c_str(), LV_LABEL_LONG_MODE_DOTS);
     lv_obj_add_flag(lvObj, LV_OBJ_FLAG_EVENT_BUBBLE);
     setStylePart(lvObj, "wifi.item", LV_PART_MAIN);
     setStylePart(lvObj, "wifi.item.selected", LV_STATE_CHECKED);

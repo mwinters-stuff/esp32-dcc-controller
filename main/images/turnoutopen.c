@@ -1,17 +1,16 @@
 #ifdef __has_include
-    #if __has_include("lvgl.h")
-        #ifndef LV_LVGL_H_INCLUDE_SIMPLE
-            #define LV_LVGL_H_INCLUDE_SIMPLE
-        #endif
-    #endif
+#if __has_include("lvgl.h")
+#ifndef LV_LVGL_H_INCLUDE_SIMPLE
+#define LV_LVGL_H_INCLUDE_SIMPLE
+#endif
+#endif
 #endif
 
 #if defined(LV_LVGL_H_INCLUDE_SIMPLE)
-    #include "lvgl.h"
+#include "lvgl.h"
 #else
-    #include "lvgl/lvgl.h"
+#include "lvgl/lvgl.h"
 #endif
-
 
 #ifndef LV_ATTRIBUTE_MEM_ALIGN
 #define LV_ATTRIBUTE_MEM_ALIGN
@@ -22,30 +21,18 @@
 #endif
 
 const LV_ATTRIBUTE_MEM_ALIGN LV_ATTRIBUTE_LARGE_CONST LV_ATTRIBUTE_IMG_TURNOUTOPEN uint8_t turnoutopen_map[] = {
-  0x00, 0x00, 
-  0x00, 0x00, 
-  0x00, 0x00, 
-  0x00, 0x00, 
-  0x7f, 0x00, 
-  0x7f, 0xc0, 
-  0x00, 0x80, 
-  0x00, 0x00, 
-  0x00, 0x00, 
-  0x7f, 0xfe, 
-  0x7f, 0xfe, 
-  0x00, 0x00, 
-  0x00, 0x00, 
-  0x00, 0x00, 
-  0x00, 0x00, 
-  0x00, 0x00, 
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7f, 0x00, 0x7f, 0xc0, 0x00, 0x80, 0x00, 0x00,
+    0x00, 0x00, 0x7f, 0xfe, 0x7f, 0xfe, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
-const lv_img_dsc_t turnoutopen = {
-  .header.cf = LV_IMG_CF_ALPHA_1BIT,
-  .header.always_zero = 0,
-  .header.reserved = 0,
-  .header.w = 16,
-  .header.h = 16,
-  .data_size = 32,
-  .data = turnoutopen_map,
+const lv_image_dsc_t turnoutopen = {
+    .header =
+        {
+            .cf = LV_COLOR_FORMAT_A1,
+            .w = 16,
+            .h = 16,
+            .stride = 2,
+        },
+    .data_size = 32,
+    .data = turnoutopen_map,
 };

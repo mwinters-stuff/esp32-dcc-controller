@@ -69,13 +69,12 @@ protected:
 
   void enableIfReceivedLists();
 private:
-  void *subscribe_failed = nullptr;
-  void *subscribe_not_saved = nullptr;
-
-  void *subscribe_dcc_roster_received = nullptr;
-  void *subscribe_dcc_turnout_received = nullptr;
-  void *subscribe_dcc_route_received = nullptr;
-  void *subscribe_dcc_turntable_received = nullptr;
+  lv_msg_sub_dsc_t *subscribe_failed = nullptr;
+  lv_msg_sub_dsc_t *subscribe_not_saved = nullptr;
+  lv_msg_sub_dsc_t *subscribe_dcc_roster_received = nullptr;
+  lv_msg_sub_dsc_t *subscribe_dcc_turnout_received = nullptr;
+  lv_msg_sub_dsc_t *subscribe_dcc_route_received = nullptr;
+  lv_msg_sub_dsc_t *subscribe_dcc_turntable_received = nullptr;
 
   std::string ip;
   int port;

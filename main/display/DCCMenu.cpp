@@ -46,9 +46,9 @@ void DCCMenu::disableButtons() {
 void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   // Title Label
   isCleanedUp = false;
-  lv_obj_clean(lv_scr_act());
-  lvObj_ = lv_scr_act();
-  
+  lv_obj_clean(lv_screen_active());
+  lvObj_ = lv_screen_active();
+
   lbl_title = makeLabel(lvObj_, dccname.c_str(), LV_ALIGN_TOP_MID, 0, 10, "label.title", &lv_font_montserrat_30);
 
   // "Roster" button
@@ -77,8 +77,8 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
 
   subscribe_failed = lv_msg_subscribe(
       MSG_WIFI_FAILED,
-      [](void *s, lv_msg_t *msg) {
-        DCCMenu *self = static_cast<DCCMenu *>(msg->user_data);
+      [](lv_msg_t *msg) {
+        DCCMenu *self = static_cast<DCCMenu *>(lv_msg_get_user_data(msg));
         if (!self || self->isCleanedUp)
           return;
         ESP_LOGI(TAG, "Not connected to wifi");
@@ -90,8 +90,8 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
 
   subscribe_dcc_roster_received = lv_msg_subscribe(
       MSG_DCC_ROSTER_LIST_RECEIVED,
-      [](void *s, lv_msg_t *msg) {
-        DCCMenu *self = static_cast<DCCMenu *>(msg->user_data);
+      [](lv_msg_t *msg) {
+        DCCMenu *self = static_cast<DCCMenu *>(lv_msg_get_user_data(msg));
         if (!self || self->isCleanedUp)
           return;
         ESP_LOGI(TAG, "DCC Roster list received message");
@@ -103,8 +103,8 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
       this);
   subscribe_dcc_turnout_received = lv_msg_subscribe(
       MSG_DCC_TURNOUT_LIST_RECEIVED,
-      [](void *s, lv_msg_t *msg) {
-        DCCMenu *self = static_cast<DCCMenu *>(msg->user_data);
+      [](lv_msg_t *msg) {
+        DCCMenu *self = static_cast<DCCMenu *>(lv_msg_get_user_data(msg));
         if (!self || self->isCleanedUp)
           return;
         ESP_LOGI(TAG, "DCC Turnout list received message");
@@ -117,8 +117,8 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
 
   subscribe_dcc_route_received = lv_msg_subscribe(
       MSG_DCC_ROUTE_LIST_RECEIVED,
-      [](void *s, lv_msg_t *msg) {
-        DCCMenu *self = static_cast<DCCMenu *>(msg->user_data);
+      [](lv_msg_t *msg) {
+        DCCMenu *self = static_cast<DCCMenu *>(lv_msg_get_user_data(msg));
         if (!self || self->isCleanedUp)
           return;
         ESP_LOGI(TAG, "DCC Route list received message");
@@ -130,8 +130,8 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
       this);
   subscribe_dcc_turntable_received = lv_msg_subscribe(
       MSG_DCC_TURNTABLE_LIST_RECEIVED,
-      [](void *s, lv_msg_t *msg) {
-        DCCMenu *self = static_cast<DCCMenu *>(msg->user_data);
+      [](lv_msg_t *msg) {
+        DCCMenu *self = static_cast<DCCMenu *>(lv_msg_get_user_data(msg));
         if (!self || self->isCleanedUp)
           return;
         ESP_LOGI(TAG, "DCC Turntable list received message");

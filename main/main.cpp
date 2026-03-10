@@ -1,3 +1,4 @@
+#include "LGFX_ILI9488_S3.hpp"
 #include "definitions.h"
 #include "display/DisplayManager.h"
 #include "display/FirstScreen.h"
@@ -6,7 +7,6 @@
 #include "millis.h"
 #include "ui/LvglTheme.h"
 #include "utilities/WifiHandler.h"
-#include <LGFX_ILI9488_S3.hpp>
 #include <LovyanGFX.hpp>
 #include <atomic>
 #include <chrono>
@@ -14,6 +14,7 @@
 #include <esp_log.h>
 #include <esp_netif.h>
 #include <esp_task_wdt.h>
+#include <esp_timer.h>
 #include <esp_wifi.h>
 #include <lvgl.h>
 #include <memory>
@@ -22,13 +23,12 @@
 
 static const char *TAG = "main";
 
-// --- LVGL Variables ---
-static lv_disp_draw_buf_t draw_buf;
-static lv_color_t *buf1;
-static lv_color_t *buf2;
+static uint32_t lv_tick_ms_cb() { return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL); }
 
-// --- Inactivity tracking ---
-static uint64_t lastActivityTime = 0;
+// --- LVGL Variables ---
+static lv_display_t *lvgl_disp = nullptr;
+
+// --- Display sleep tracking ---
 static bool displaySleeping = false;
 constexpr uint32_t INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
@@ -57,10 +57,11 @@ void display_set_sleep(bool sleep) {
 }
 
 // --- Touchpad Read Callback ---
-void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data) {
-  lv_coord_t x = 0;
-  lv_coord_t y = 0;
+void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data) {
+  int32_t x = 0;
+  int32_t y = 0;
   bool touched = DisplayManager::gfx.getTouch(&x, &y);
+
 
   // Adjust these to match your hardware / rotation
   // Try FLIP_Y = true to fix upside-down touches
@@ -69,28 +70,29 @@ void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data) {
   constexpr bool SWAP_XY = false;
 
   if (touched) {
-    lv_coord_t tx = x;
-    lv_coord_t ty = y;
+    int32_t tx = x;
+    int32_t ty = y;
 
     if (SWAP_XY)
       std::swap(tx, ty);
     if (FLIP_X)
-      tx = static_cast<lv_coord_t>(DisplayManager::gfx.screenWidth - tx - 1);
+      tx = static_cast<int32_t>(DisplayManager::gfx.screenWidth - tx - 1);
     if (FLIP_Y)
-      ty = static_cast<lv_coord_t>(DisplayManager::gfx.screenHeight - ty - 1);
+      ty = static_cast<int32_t>(DisplayManager::gfx.screenHeight - ty - 1);
 
     data->point.x = tx;
     data->point.y = ty;
-    data->state = LV_INDEV_STATE_PR;
+    data->state = LV_INDEV_STATE_PRESSED;
+
+    lv_display_trigger_activity(lvgl_disp); // reset inactivity timer on touch
 
     if (displaySleeping) {
       display_set_sleep(false);
       displaySleeping = false;
-      data->state = LV_INDEV_STATE_REL;
-      lastActivityTime = millis();
+      data->state = LV_INDEV_STATE_RELEASED;
     }
   } else {
-    data->state = LV_INDEV_STATE_REL;
+    data->state = LV_INDEV_STATE_RELEASED;
   }
 }
 
@@ -116,24 +118,27 @@ void setup() {
   }
 
   lv_init();
+  lv_tick_set_cb(lv_tick_ms_cb);
   auto buffer_size = DisplayManager::bufferSize();
-  buf1 = new lv_color_t[buffer_size];
-  buf2 = new lv_color_t[buffer_size];
-  lv_disp_draw_buf_init(&draw_buf, buf1, buf2, buffer_size);
+  lv_color_t *buf1 = new lv_color_t[buffer_size];
+  lv_color_t *buf2 = new lv_color_t[buffer_size];
+  lvgl_disp = lv_display_create(DisplayManager::gfx.screenWidth, DisplayManager::gfx.screenHeight);
+  if (!lvgl_disp) {
+    ESP_LOGE(TAG, "lv_display_create failed");
+    return;
+  }
+  lv_display_set_default(lvgl_disp);
+  lv_display_set_buffers(lvgl_disp, buf1, buf2, buffer_size * sizeof(lv_color_t), LV_DISPLAY_RENDER_MODE_PARTIAL);
+  lv_display_set_flush_cb(lvgl_disp, DisplayManager::disp_flush);
 
-  static lv_disp_drv_t disp_drv;
-  lv_disp_drv_init(&disp_drv);
-  disp_drv.hor_res = DisplayManager::gfx.screenWidth;
-  disp_drv.ver_res = DisplayManager::gfx.screenHeight;
-  disp_drv.flush_cb = DisplayManager::disp_flush;
-  disp_drv.draw_buf = &draw_buf;
-  lv_disp_drv_register(&disp_drv);
-
-  static lv_indev_drv_t indev_drv;
-  lv_indev_drv_init(&indev_drv);
-  indev_drv.type = LV_INDEV_TYPE_POINTER;
-  indev_drv.read_cb = my_touchpad_read;
-  lv_indev_t *indev = lv_indev_drv_register(&indev_drv);
+  lv_indev_t *indev = lv_indev_create();
+  if (!indev) {
+    ESP_LOGE(TAG, "lv_indev_create failed");
+    return;
+  }
+  lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+  lv_indev_set_display(indev, lvgl_disp);
+  lv_indev_set_read_cb(indev, my_touchpad_read);
   ESP_LOGI(TAG, "Touch indev registered: %p", indev);
 
   auto theme = std::make_shared<ui::LvglTheme>("Default");
@@ -143,7 +148,7 @@ void setup() {
   // regardless of which screen is currently active.
   lv_msg_subscribe(
       MSG_DCC_DISCONNECTED,
-      [](void *, lv_msg_t *) {
+      [](lv_msg_t *) {
         display::FirstScreen::instance()->showScreen();
       },
       nullptr);
@@ -169,14 +174,7 @@ void setup() {
     break;
   }
 
-  lastActivityTime = millis();
   ESP_LOGI(TAG, "Setup complete. UI should be visible.");
-}
-
-// Called by a periodic timer
-void lv_tick_task(void *arg) {
-  (void)arg;
-  lv_tick_inc(1); // exactly 1ms increment
 }
 
 extern "C" void app_main() {
@@ -190,26 +188,17 @@ extern "C" void app_main() {
 
   setup();
 
-  const esp_timer_create_args_t lv_tick_timer_args = {
-      .callback = &lv_tick_task,
-      .arg = nullptr,
-      .dispatch_method = ESP_TIMER_TASK,
-      .name = "lv_tick",
-      .skip_unhandled_events = false,
-  };
-  esp_timer_handle_t lv_tick_timer;
-  ESP_ERROR_CHECK(esp_timer_create(&lv_tick_timer_args, &lv_tick_timer));
-  ESP_ERROR_CHECK(esp_timer_start_periodic(lv_tick_timer, 1000)); // 1000 µs = 1ms
-
   while (true) {
-    lv_timer_handler();
+    uint32_t next_ms = lv_timer_handler();
     vTaskDelay(pdMS_TO_TICKS(10));
 
-    // --- Inactivity check ---
-    uint32_t now = millis();
-    if (!displaySleeping && (now - lastActivityTime > INACTIVITY_TIMEOUT_MS)) {
-      display_set_sleep(true);
-      displaySleeping = true;
+    // --- Inactivity check (using LVGL's built-in tracking) ---
+    if (!displaySleeping) {
+      uint32_t inactive_ms = lv_display_get_inactive_time(lvgl_disp);
+      if (inactive_ms > INACTIVITY_TIMEOUT_MS) {
+        display_set_sleep(true);
+        displaySleeping = true;
+      }
     }
   }
 }

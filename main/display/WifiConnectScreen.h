@@ -1,4 +1,5 @@
 #include "Screen.h"
+#include "ui/lv_msg.h"
 // #include "ui/LvglButton.h"
 // #include "ui/LvglButtonSymbol.h"
 // #include "ui/LvglHorizontalLayout.h"
@@ -41,8 +42,8 @@ public:
   lv_obj_t *lbl_spinner = nullptr;
   lv_obj_t *kb_keyboard = nullptr;
 
-  void wifi_connected_callback(void *s, lv_msg_t *msg);
-  void wifi_failed_callback(void *s, lv_msg_t *msg);
+  void wifi_connected_callback(lv_msg_t *msg);
+  void wifi_failed_callback(lv_msg_t *msg);
 
   void event_password_show_callback(lv_event_t *e);
   void event_keyboard_callback(lv_event_t *e);
@@ -60,22 +61,22 @@ private:
 
   void createScreen();
 
-  void *wifi_connected_sub = nullptr;
-  void *wifi_failed_sub = nullptr;
+  lv_msg_sub_dsc_t *wifi_connected_sub = nullptr;
+  lv_msg_sub_dsc_t *wifi_failed_sub = nullptr;
 
 protected:
   WifiConnectScreen() = default;
 
-  static void wifi_connected_trampoline(void *s, lv_msg_t *msg) {
-    auto *self = static_cast<WifiConnectScreen *>(msg->user_data);
+  static void wifi_connected_trampoline(lv_msg_t *msg) {
+    auto *self = static_cast<WifiConnectScreen *>(lv_msg_get_user_data(msg));
     if (self)
-      self->wifi_connected_callback(s, msg);
+      self->wifi_connected_callback(msg);
   }
 
-  static void wifi_failed_trampoline(void *s, lv_msg_t *msg) {
-    auto *self = static_cast<WifiConnectScreen *>(msg->user_data);
+  static void wifi_failed_trampoline(lv_msg_t *msg) {
+    auto *self = static_cast<WifiConnectScreen *>(lv_msg_get_user_data(msg));
     if (self)
-      self->wifi_failed_callback(s, msg);
+      self->wifi_failed_callback(msg);
   }
 
   static void event_password_show_trampoline(lv_event_t *e) {

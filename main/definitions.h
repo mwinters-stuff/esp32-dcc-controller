@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ui/lv_msg.h"
+
 #define MSG_WIFI_CONNECTED 1
 #define MSG_WIFI_FAILED 2
 #define MSG_WIFI_NOT_SAVED 3

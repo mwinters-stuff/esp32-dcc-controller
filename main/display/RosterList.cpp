@@ -37,8 +37,8 @@ void RosterListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
 
   subscribe_failed = lv_msg_subscribe(
       MSG_WIFI_FAILED,
-      [](void *s, lv_msg_t *msg) {
-        RosterListScreen *self = static_cast<RosterListScreen *>(msg->user_data);
+      [](lv_msg_t *msg) {
+        RosterListScreen *self = static_cast<RosterListScreen *>(lv_msg_get_user_data(msg));
         if (!self || self->isCleanedUp)
           return;
         ESP_LOGI(TAG, "Not connected to wifi");
@@ -123,9 +123,9 @@ void RosterListScreen::button_listitem_click_event_callback(lv_event_t *e) {
     ESP_LOGI(TAG, "List item clicked");
 
     // You can handle the list item click event here if needed
-    lv_obj_t *target = lv_event_get_target(e);
+    lv_obj_t *target = (lv_obj_t *)lv_event_get_target(e);
     /*The current target is always the container as the event is added to it*/
-    lv_obj_t *cont = lv_event_get_current_target(e);
+    lv_obj_t *cont = (lv_obj_t *)lv_event_get_current_target(e);
 
     /*If container was clicked do nothing*/
     if (target == cont) {

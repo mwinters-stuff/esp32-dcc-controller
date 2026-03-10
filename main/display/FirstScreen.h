@@ -1,5 +1,6 @@
 #pragma once
 #include "Screen.h"
+#include "ui/lv_msg.h"
 #include <memory>
 
 namespace display {
@@ -28,9 +29,9 @@ public:
   void button_wifi_list_callback(lv_event_t *e);
   void button_calibrate_callback(lv_event_t *e);
 
-  void wifi_connected_callback(void *s, lv_msg_t *msg);
-  void wifi_failed_callback(void *s, lv_msg_t *msg);
-  void wifi_not_saved_callback(void *s, lv_msg_t *msg);
+  void wifi_connected_callback(lv_msg_t *msg);
+  void wifi_failed_callback(lv_msg_t *msg);
+  void wifi_not_saved_callback(lv_msg_t *msg);
 
 protected:
   FirstScreen() = default;
@@ -53,29 +54,29 @@ protected:
       self->button_calibrate_callback(e);
   }
 
-  static void wifi_connected_trampoline(void *s, lv_msg_t *msg) {
-    auto *self = static_cast<FirstScreen *>(msg->user_data);
+  static void wifi_connected_trampoline(lv_msg_t *msg) {
+    auto *self = static_cast<FirstScreen *>(lv_msg_get_user_data(msg));
     if (self)
-      self->wifi_connected_callback(s, msg);
+      self->wifi_connected_callback(msg);
   }
 
-  static void wifi_failed_trampoline(void *s, lv_msg_t *msg) {
-    auto *self = static_cast<FirstScreen *>(msg->user_data);
+  static void wifi_failed_trampoline(lv_msg_t *msg) {
+    auto *self = static_cast<FirstScreen *>(lv_msg_get_user_data(msg));
     if (self)
-      self->wifi_failed_callback(s, msg);
+      self->wifi_failed_callback(msg);
   }
 
-  static void wifi_not_saved_trampoline(void *s, lv_msg_t *msg) {
-    auto *self = static_cast<FirstScreen *>(msg->user_data);
+  static void wifi_not_saved_trampoline(lv_msg_t *msg) {
+    auto *self = static_cast<FirstScreen *>(lv_msg_get_user_data(msg));
     if (self)
-      self->wifi_not_saved_callback(s, msg);
+      self->wifi_not_saved_callback(msg);
   }
 
 private:
   bool isCleanedUp = false;
-  void *subscribe_connected = nullptr;
-  void *subscribe_failed = nullptr;
-  void *subscribe_not_saved = nullptr;
+  lv_msg_sub_dsc_t *subscribe_connected = nullptr;
+  lv_msg_sub_dsc_t *subscribe_failed = nullptr;
+  lv_msg_sub_dsc_t *subscribe_not_saved = nullptr;
 
   lv_obj_t *lbl_title = nullptr;
   lv_obj_t *btn_connect = nullptr;

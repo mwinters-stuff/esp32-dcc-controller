@@ -1,5 +1,6 @@
 #pragma once
 #include "ui/LvglTheme.h"
+#include "ui/lv_msg.h"
 #include <LovyanGFX.hpp>
 #include <esp_err.h>
 #include <esp_log.h>
@@ -15,7 +16,7 @@ public:
 
   virtual void showScreen(std::weak_ptr<Screen> parentScreen = std::weak_ptr<Screen>{}) {
 
-    lvObj_ = lv_scr_act();
+    lvObj_ = lv_screen_active();
     // lv_obj_clean(lvObj_);
 
     if (!parentScreen.expired()) {
