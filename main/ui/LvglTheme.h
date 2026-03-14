@@ -8,7 +8,7 @@
 #include <unordered_map>
 
 namespace ui {
-static const char *TAG = "LVGL_THEME";
+// static const char *TAG = "LVGL_THEME";
 
 class LvglTheme {
 public:
@@ -59,7 +59,7 @@ public:
       auto up = std::make_unique<LvglStyle>();
       LvglStyle &ref = *up;
       styles_.emplace(key, std::move(up));
-      ESP_LOGI(TAG, "Defined style '%s' in theme '%s'", key.c_str(), name_.c_str());
+      // ESP_LOGI(TAG, "Defined style '%s' in theme '%s'", key.c_str(), name_.c_str());
       return ref;
     }
     return *it->second;

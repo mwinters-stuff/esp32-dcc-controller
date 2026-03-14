@@ -23,6 +23,11 @@ struct WithrottleDevice {
   std::map<std::string, std::string> txt;
 };
 
+struct ReshowScreenData {
+  std::string status;
+  std::string subtitle;
+};
+
 class WifiHandler : public std::enable_shared_from_this<WifiHandler> {
 public:
   static std::shared_ptr<WifiHandler> instance() {
@@ -48,7 +53,8 @@ public:
   static EventGroupHandle_t wifi_event_group;
 
   void WifiConnectTask(void *pvParameter);
-  void create_wifi_connect_task(const char *ssid, const char *password);
+  void WifiConnectManualTask(void *pvParameter);
+  void create_wifi_connect_task(const char *ssid, const char *password, bool manualConnect = false);
 
   std::shared_ptr<wifi_credentials_t> creds;
   void noConnectionSaved();
@@ -67,7 +73,9 @@ public:
 private:
   static std::vector<WithrottleDevice> withrottle_devices;
   bool connected = false;
-  bool interactiveConnectInProgress = false;
+  bool manualConnectInProgress = false;
+
+  void logMDNSResult(WithrottleDevice &r);
 
 protected:
   WifiHandler() = default;

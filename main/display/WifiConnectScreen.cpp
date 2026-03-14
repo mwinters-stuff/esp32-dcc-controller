@@ -27,8 +27,17 @@ void WifiConnectScreen::wifi_connected_callback(lv_msg_t *msg) {
         WifiConnectScreen *self = static_cast<WifiConnectScreen *>(lv_timer_get_user_data(t));
         if (!self || self->isCleanedUp)
           return;
-        self->cleanUp();
-        FirstScreen::instance()->showScreen();
+
+        // Defer cleanup/navigation to avoid tearing down UI in timer callback context.
+        lv_async_call(
+            [](void *arg) {
+              auto *screen = static_cast<WifiConnectScreen *>(arg);
+              if (!screen || screen->isCleanedUp)
+                return;
+              screen->cleanUp();
+              FirstScreen::instance()->showScreen();
+            },
+            self);
 
         // Offload NVS flash write to a background task — it blocks for several ms
         // and must not run inside the LVGL timer handler.
@@ -48,7 +57,38 @@ void WifiConnectScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScree
   isCleanedUp = false;
   createScreen();
   wifi_connected_sub = lv_msg_subscribe(MSG_WIFI_CONNECTED, &WifiConnectScreen::wifi_connected_trampoline, this);
+
   wifi_failed_sub = lv_msg_subscribe(MSG_WIFI_FAILED, &WifiConnectScreen::wifi_failed_trampoline, this);
+
+  reshow_screen_sub = lv_msg_subscribe(
+      MSG_RESHOW_WIFI_CONNECT_SCREEN,
+      [](lv_msg_t *msg) {
+        auto *self = static_cast<WifiConnectScreen *>(lv_msg_get_user_data(msg));
+        if (!self)
+          return;
+        auto *payload = static_cast<const utilities::ReshowScreenData *>(lv_msg_get_payload(msg));
+        if (payload) {
+          self->reshowScreen(payload->status, payload->subtitle);
+        }
+      },
+      this);
+}
+
+void WifiConnectScreen::reshowScreen(const std::string &status, const std::string &subtitle) {
+  if (isCleanedUp)
+    return;
+
+  if (!subtitle.empty()) {
+    lv_label_set_text(lbl_status2, subtitle.c_str());
+    lv_obj_clear_flag(lbl_status2, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(lbl_status2, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  lv_label_set_text(lbl_status, status.c_str());
+  lv_obj_clear_flag(lbl_status, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(lbl_spinner, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(kb_keyboard, LV_OBJ_FLAG_HIDDEN);
 }
 
 void WifiConnectScreen::wifi_failed_callback(lv_msg_t *msg) {
@@ -76,6 +116,12 @@ void WifiConnectScreen::cleanUp() {
     lv_msg_unsubscribe(wifi_failed_sub);
     wifi_failed_sub = nullptr;
   }
+  if (reshow_screen_sub) {
+    lv_msg_unsubscribe(reshow_screen_sub);
+    reshow_screen_sub = nullptr;
+  }
+  lv_obj_clean(lvObj_);
+
   lbl_title = nullptr;
   lbl_subtitle = nullptr;
   vert_container = nullptr;
@@ -86,7 +132,7 @@ void WifiConnectScreen::cleanUp() {
   lbl_status = nullptr;
   lbl_spinner = nullptr;
   kb_keyboard = nullptr;
-  lv_obj_clean(lvObj_);
+  lbl_status2 = nullptr;
 }
 
 void WifiConnectScreen::setSSID(const std::string &ssid) { this->ssid = ssid; }
@@ -127,8 +173,13 @@ void WifiConnectScreen::createScreen() {
   lv_obj_clear_flag(kb_keyboard, LV_OBJ_FLAG_HIDDEN);
   lv_keyboard_set_textarea(kb_keyboard, ta_password);
 
-  lbl_status = makeLabel(vert_container, "", LV_ALIGN_TOP_MID, 0, 100);
+  lbl_status = makeLabel(vert_container, "", LV_ALIGN_TOP_MID, 0, 100, "label.main", &lv_font_montserrat_20);
   lv_obj_add_flag(lbl_status, LV_OBJ_FLAG_HIDDEN);
+
+  lbl_status2 = makeLabel(vert_container, "", LV_ALIGN_TOP_MID, 0, 130, "label.main", &lv_font_montserrat_16);
+  lv_label_set_long_mode(lbl_status2, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(lbl_status2, lv_pct(100));
+  lv_obj_add_flag(lbl_status2, LV_OBJ_FLAG_HIDDEN);
 
   lbl_spinner = makeSpinner(lv_screen_active(), 0, 0, 40, 1000);
   lv_obj_add_flag(lbl_spinner, LV_OBJ_FLAG_HIDDEN);
@@ -148,6 +199,10 @@ void WifiConnectScreen::event_password_show_callback(lv_event_t *e) {
   }
 }
 
+bool WifiConnectScreen::isPasswordVisible() {
+  return !lv_textarea_get_password_mode(ta_password);
+}
+
 void WifiConnectScreen::event_keyboard_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -157,23 +212,43 @@ void WifiConnectScreen::event_keyboard_callback(lv_event_t *e) {
     // OK / Enter pressed
     lv_obj_add_flag(kb_keyboard, LV_OBJ_FLAG_HIDDEN);
 
+    if(isPasswordVisible()) {
+      // If password is currently visible, hide it before connecting
+      lv_textarea_set_password_mode(ta_password, true);
+      lv_label_set_text(bs_password_show, LV_SYMBOL_EYE_OPEN);
+    }
+
     lv_label_set_text(lbl_status, "Connecting...");
     lv_obj_add_flag(kb_keyboard, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(lbl_status, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(lbl_spinner, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lbl_status2, LV_OBJ_FLAG_HIDDEN);
 
     auto password = std::string(lv_textarea_get_text(ta_password));
 
     ESP_LOGI(TAG, "Connecting to SSID: %s", ssid.c_str());
-    utilities::WifiHandler::instance()->create_wifi_connect_task(ssid.c_str(), password.c_str());
+    utilities::WifiHandler::instance()->create_wifi_connect_task(ssid.c_str(), password.c_str(), true);
   } else if (code == LV_EVENT_CANCEL) {
     // Close button pressed (×)
     lv_obj_add_flag(kb_keyboard, LV_OBJ_FLAG_HIDDEN);
-    cleanUp();
+
+    auto *ctx = new std::pair<WifiConnectScreen *, std::weak_ptr<Screen>>(this, parentScreen_);
+    lv_async_call(
+        [](void *arg) {
+          auto *data = static_cast<std::pair<WifiConnectScreen *, std::weak_ptr<Screen>> *>(arg);
+          auto *self = data->first;
+          auto parent = data->second;
+          delete data;
+          if (!self || self->isCleanedUp)
+            return;
+          self->cleanUp();
+          if (auto screen = parent.lock()) {
+            screen->showScreen();
+          }
+        },
+        ctx);
+
     ESP_LOGI(TAG, "Connection cancelled for SSID: %s", ssid.c_str());
-    if (auto screen = parentScreen_.lock()) {
-      screen->showScreen();
-    }
   }
 }
 

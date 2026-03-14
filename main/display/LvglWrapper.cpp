@@ -12,7 +12,7 @@ void setStyle(lv_obj_t *widget, const std::string &styleName) {
   }
   auto s = theme->get(styleName);
   if (s) {
-    ESP_LOGI(TAG, "Applying style '%s' to widget %p", styleName.c_str(), (void *)widget);
+    // ESP_LOGI(TAG, "Applying style '%s' to widget %p", styleName.c_str(), (void *)widget);
     s->applyTo(widget);
   }
 }
@@ -25,7 +25,7 @@ void setStylePart(lv_obj_t *widget, const std::string &styleName, lv_style_selec
   }
   auto s = theme->get(styleName);
   if (s) {
-    ESP_LOGI(TAG, "Applying style part '%s' to widget %p", styleName.c_str(), (void *)widget);
+    // ESP_LOGI(TAG, "Applying style part '%s' to widget %p", styleName.c_str(), (void *)widget);
     s->applyTo(widget, selector);
   }
 }
@@ -95,7 +95,7 @@ void lv_list_set_btn_icon(lv_obj_t *btn, const lv_image_dsc_t *icon) {
 }
 
 lv_obj_t *lv_list_add_btn_mode(lv_obj_t *list, const void *icon, const char *txt, const lv_label_long_mode_t mode) {
-  LV_LOG_INFO("begin");
+  
   lv_obj_t *obj = lv_obj_class_create_obj(&lv_list_button_class, list);
   lv_obj_class_init_obj(obj);
   lv_obj_set_size(obj, LV_PCT(100), LV_SIZE_CONTENT);

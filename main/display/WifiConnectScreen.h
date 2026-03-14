@@ -30,10 +30,11 @@ public:
   ~WifiConnectScreen() override = default;
 
   void setSSID(const std::string &ssid);
-  void unsubscribeAll();
 
   void show(lv_obj_t *parent = nullptr, std::weak_ptr<Screen> parentScreen = std::weak_ptr<Screen>{}) override;
   void cleanUp() override;
+
+  void reshowScreen(const std::string &status, const std::string &subtitle = "");
 
   WifiConnectScreen(const WifiConnectScreen &) = delete;
   WifiConnectScreen &operator=(const WifiConnectScreen &) = delete;
@@ -41,6 +42,7 @@ public:
   lv_obj_t *lbl_status = nullptr;
   lv_obj_t *lbl_spinner = nullptr;
   lv_obj_t *kb_keyboard = nullptr;
+  lv_obj_t *lbl_status2 = nullptr;
 
   void wifi_connected_callback(lv_msg_t *msg);
   void wifi_failed_callback(lv_msg_t *msg);
@@ -60,9 +62,11 @@ private:
   std::string ssid;
 
   void createScreen();
+  bool isPasswordVisible();
 
   lv_msg_sub_dsc_t *wifi_connected_sub = nullptr;
   lv_msg_sub_dsc_t *wifi_failed_sub = nullptr;
+  lv_msg_sub_dsc_t *reshow_screen_sub = nullptr;
 
 protected:
   WifiConnectScreen() = default;

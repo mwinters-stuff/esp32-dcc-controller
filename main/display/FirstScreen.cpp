@@ -41,11 +41,13 @@ void FirstScreen::enableButtons(bool enableConnect) {
 
   ESP_LOGI(TAG, "EnableButtons");
   // Enable or disable buttons (C LVGL)
-  lv_obj_clear_state(btn_connect, LV_STATE_DISABLED);
+  if (!enableConnect) {
+    lv_obj_add_state(btn_connect, LV_STATE_DISABLED);
+  } else {
+    lv_obj_clear_state(btn_connect, LV_STATE_DISABLED);
+  }
   lv_obj_clear_state(btn_cal, LV_STATE_DISABLED);
   lv_obj_clear_state(btn_wifi_scan, LV_STATE_DISABLED);
-  if (!enableConnect)
-    lv_obj_add_state(btn_connect, LV_STATE_DISABLED);
 }
 
 void FirstScreen::disableButtons() {
