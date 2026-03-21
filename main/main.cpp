@@ -5,7 +5,7 @@
 #include "display/ManualCalibration.h"
 #include "display/MessageBox.h"
 #include "display/WifiConnectScreen.h"
-#include "millis.h"
+#include "ESP_Millis.h"
 #include "ui/LvglTheme.h"
 #include "utilities/WifiHandler.h"
 #include <LovyanGFX.hpp>

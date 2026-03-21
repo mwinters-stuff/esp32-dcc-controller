@@ -17,7 +17,7 @@ public:
 
     void receivedServerVersion(int major, int minor, int patch) override;
 
-    void receivedMessage(char *message) override;
+    void receivedMessage(const char *message) override;
 
     void receivedRosterList() override;
 
@@ -51,10 +51,7 @@ public:
 
     void receivedWriteCV(int cv, int value) override;
 
-    void receivedScreenUpdate(int screen, int row, char *message) override;
-
-    uint32_t millis() override;
-
+    void receivedScreenUpdate(int screen, int row, const char *message) override;
 
     TurnoutActionData turnoutActionData;
 };

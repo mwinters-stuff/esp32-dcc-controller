@@ -43,7 +43,7 @@ void DCCEXProtocolDelegateImpl::receivedServerVersion(int major, int minor, int 
   printf("Server Version: %d.%d.%d\n", major, minor, patch);
 }
 
-void DCCEXProtocolDelegateImpl::receivedMessage(char *message) { printf("Broadcast Message: %s\n", message); }
+void DCCEXProtocolDelegateImpl::receivedMessage(const char *message) { printf("Broadcast Message: %s\n", message); }
 
 void DCCEXProtocolDelegateImpl::receivedRosterList() {
   printf("Roster list received.\n");
@@ -118,10 +118,6 @@ void DCCEXProtocolDelegateImpl::receivedWriteLoco(int address) { printf("Write L
 
 void DCCEXProtocolDelegateImpl::receivedWriteCV(int cv, int value) { printf("Write CV: CV=%d, Value=%d\n", cv, value); }
 
-void DCCEXProtocolDelegateImpl::receivedScreenUpdate(int screen, int row, char *message) {
+void DCCEXProtocolDelegateImpl::receivedScreenUpdate(int screen, int row, const char *message) {
   printf("Screen Update: Screen=%d, Row=%d, Message=%s\n", screen, row, message);
-}
-
-uint32_t DCCEXProtocolDelegateImpl::millis() {
-  return static_cast<uint32_t>(esp_timer_get_time() / 1000); // Convert microseconds to milliseconds
 }

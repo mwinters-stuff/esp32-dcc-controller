@@ -7,8 +7,8 @@
 // #include "../config.h"
 #include "definitions.h"
 #include "freertos/task.h"
-#include "wifi_connection.h"
 #include "ui/lv_msg.h"
+#include "wifi_connection.h"
 #include <DCCEXProtocol.h>
 #include <esp_log.h>
 #include <esp_timer.h>
@@ -16,22 +16,9 @@
 #include <lwip/apps/mdns.h>
 
 namespace utilities {
-// Define the static instance variable
-// std::shared_ptr<WifiControl> WifiControl::instance = nullptr;
 extern QueueHandle_t tcp_fail_queue;
 
 static const char *TAG = "WifiControl";
-
-// Static timer handle
-// static esp_timer_handle_t wifi_loop_timer = nullptr;
-
-// Timer callback
-// static void wifi_loop_timer_callback(void *arg) {
-//   auto self = static_cast<WifiControl *>(arg);
-//   if (self) {
-//     self->loop();
-//   }
-// }
 
 void wifi_loop_task(void *arg) {
   auto self = static_cast<WifiControl *>(arg);
@@ -44,6 +31,7 @@ void wifi_loop_task(void *arg) {
 WifiControl::WifiControl() { init(); }
 
 void WifiControl::init() {
+  dccMillis = new ESPDCCMillis();
   xTaskCreate(wifi_loop_task,   // Your task function
               "wifi_loop_task", // Name
               4096,             // Stack size
@@ -51,17 +39,6 @@ void WifiControl::init() {
               tskIDLE_PRIORITY, // Priority
               nullptr           // Task handle
   );
-  // if (!wifi_loop_timer) {
-  //   esp_timer_create_args_t timer_args = {
-  //       .callback = &wifi_loop_timer_callback,
-  //       .arg = this,
-  //       .dispatch_method = ESP_TIMER_TASK,
-  //       .name = "wifi_loop",
-  //       .skip_unhandled_events = false,
-  //   };
-  //   esp_timer_create(&timer_args, &wifi_loop_timer);
-  //   esp_timer_start_periodic(wifi_loop_timer, 50 * 1000); // 50ms in microseconds
-  // }
 }
 
 bool WifiControl::connect() { return true; }
@@ -145,7 +122,7 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
   ESP_LOGI(TAG, "Connecting to server...");
   currentConnectionState = CONNECTING;
   const uint32_t timeout_ms = 10000;
-  uint32_t start_time = esp_timer_get_time() / 1000; // Convert to milliseconds;
+  uint32_t start_time = millis();
   while (currentConnectionState == CONNECTING) {
     // Read PCB state under the lwIP core lock to avoid a data race with the lwIP task
     LOCK_TCPIP_CORE();
@@ -158,13 +135,15 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
       UNLOCK_TCPIP_CORE();
 
       logStream = new LoggingStream(nullptr);
-      dccExProtocol = std::make_shared<DCCExController::DCCEXProtocol>();
+
+      dccExProtocol = std::make_shared<DCCExController::DCCEXProtocol>(dccMillis);
 
       dccExProtocol->setLogStream(logStream);
       dccExProtocol->setDelegate(&dccDelegate);
       dccExProtocol->connect(stream);
+      dccExProtocol->setDebug(true);
       dccExProtocol->enableHeartbeat();
-      lastGetListsMs = esp_timer_get_time() / 1000;
+      lastGetListsMs = millis();
       currentConnectionState = CONNECTED;
     } else if (state == CLOSED || state == TIME_WAIT || state == FIN_WAIT_1 || state == FIN_WAIT_2) {
       printf("Connection failed or closed\n");
@@ -178,7 +157,7 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
     }
 
     // Timeout check
-    uint32_t now = esp_timer_get_time() / 1000; // Convert to milliseconds
+    uint32_t now = millis(); // Convert to milliseconds
     if (now - start_time > timeout_ms) {
       ESP_LOGI(TAG, "Connection timed out after 10 seconds");
       LOCK_TCPIP_CORE();
@@ -197,7 +176,7 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
 void WifiControl::loop() {
   if (dccExProtocol) {
     dccExProtocol->check();
-    uint64_t now_ms = esp_timer_get_time() / 1000;
+    uint64_t now_ms = millis();
     if (now_ms - lastGetListsMs >= 1000) {
       dccExProtocol->getLists(true, true, true, true);
       lastGetListsMs = now_ms;
@@ -213,7 +192,11 @@ void WifiControl::loop() {
     failError(err);
     disconnect();
     ESP_LOGI(TAG, "Disconnected from server due to error");
-    lv_async_call([](void *) { lv_msg_send(MSG_DCC_DISCONNECTED, nullptr); }, nullptr);
+    lv_async_call(
+        [](void *) {
+          lv_msg_send(MSG_DCC_DISCONNECTED, nullptr);
+        },
+        nullptr);
   }
 }
 

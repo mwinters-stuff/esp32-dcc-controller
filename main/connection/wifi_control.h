@@ -10,6 +10,7 @@
 
 #include "dcc_delegate.h"
 #include "wifi_connection.h"
+#include "ESP_Millis.h"
 
 namespace utilities {
 
@@ -60,6 +61,7 @@ public:
 private:
   connection_state currentConnectionState = NOT_CONNECTED;
   uint64_t lastGetListsMs = 0;
+  DCCExController::DCCMillis *dccMillis;
 
   struct ConnectTaskArgs {
     WifiControl *self;
