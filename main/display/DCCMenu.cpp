@@ -4,8 +4,8 @@
 #include "FirstScreen.h"
 #include "LvglWrapper.h"
 #include "RosterList.h"
-#include "TurnTableList.h"
 #include "TurnoutList.h"
+#include "TurntableList.h"
 #include "connection/wifi_control.h"
 #include "definitions.h"
 #include <esp_log.h>
@@ -68,8 +68,12 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   lv_obj_add_event_cb(btn_turntables, &DCCMenu::event_turntables_trampoline, LV_EVENT_CLICKED, this);
 
   // Icon-only refresh button
-  btn_refresh = makeButton(lvObj_, LV_SYMBOL_REFRESH, 48, 48, LV_ALIGN_CENTER, 0, 120, "button.secondary");
+  btn_refresh = makeButton(lvObj_, LV_SYMBOL_REFRESH, 48, 48, LV_ALIGN_CENTER, -30, 120, "button.secondary");
   lv_obj_add_event_cb(btn_refresh, &DCCMenu::event_refresh_trampoline, LV_EVENT_CLICKED, this);
+
+  // Icon-only track power toggle button
+  btn_track_power = makeButton(lvObj_, LV_SYMBOL_POWER, 48, 48, LV_ALIGN_CENTER, 30, 120, "button.secondary");
+  lv_obj_add_event_cb(btn_track_power, &DCCMenu::event_track_power_trampoline, LV_EVENT_CLICKED, this);
 
   // "Close" button
   btn_close = makeButton(lvObj_, "Close", 200, 48, LV_ALIGN_CENTER, 0, 180, "button.secondary");
@@ -131,6 +135,30 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
       },
       this);
 
+  subscribe_dcc_track_power = lv_msg_subscribe(
+      MSG_DCC_TRACK_POWER_CHANGED,
+      [](lv_msg_t *msg) {
+        DCCMenu *self = static_cast<DCCMenu *>(lv_msg_get_user_data(msg));
+        if (!self || self->isCleanedUp)
+          return;
+        const auto *statePayload = static_cast<const uint8_t *>(lv_msg_get_payload(msg));
+        if (!statePayload)
+          return;
+
+        self->trackPowerState = static_cast<DCCExController::TrackPower>(*statePayload);
+        if (!self->btn_track_power)
+          return;
+
+        if (self->trackPowerState == DCCExController::PowerOn) {
+          lv_obj_set_style_text_color(self->btn_track_power, lv_color_hex(0x2E7D32), LV_PART_MAIN);
+        } else if (self->trackPowerState == DCCExController::PowerOff) {
+          lv_obj_set_style_text_color(self->btn_track_power, lv_color_hex(0xC62828), LV_PART_MAIN);
+        } else {
+          lv_obj_set_style_text_color(self->btn_track_power, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+        }
+      },
+      this);
+
   // Status labels under the last button
   // Show connection state and IP (IP empty when disconnected)
   lbl_status = makeLabel(lvObj_, "", LV_ALIGN_TOP_MID, 0, 40, "label.main");
@@ -184,6 +212,10 @@ void DCCMenu::unsubscribeAll() {
     lv_msg_unsubscribe(subscribe_dcc_turntable_received);
     subscribe_dcc_turntable_received = nullptr;
   }
+  if (subscribe_dcc_track_power != nullptr) {
+    lv_msg_unsubscribe(subscribe_dcc_track_power);
+    subscribe_dcc_track_power = nullptr;
+  }
 }
 
 void DCCMenu::cleanUp() {
@@ -196,6 +228,7 @@ void DCCMenu::cleanUp() {
   btn_routes = nullptr;
   btn_turntables = nullptr;
   btn_refresh = nullptr;
+  btn_track_power = nullptr;
   btn_close = nullptr;
   lbl_title = nullptr;
   lbl_status = nullptr;
@@ -234,7 +267,7 @@ void DCCMenu::button_turntables_callback(lv_event_t *e) {
 
     cleanUp();
 
-    auto turntableListScreen = TurnTableListScreen::instance();
+    auto turntableListScreen = TurntableListScreen::instance();
     turntableListScreen->showScreen(shared_from_this());
   }
 }
@@ -252,6 +285,25 @@ void DCCMenu::button_refresh_callback(lv_event_t *e) {
     dccProtocol->refreshAllLists();
     if (lbl_status)
       lv_label_set_text(lbl_status, "Refreshing lists...");
+  }
+}
+
+void DCCMenu::button_track_power_callback(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    auto wifiControl = utilities::WifiControl::instance();
+    auto dccProtocol = wifiControl->dccProtocol();
+    if (dccProtocol == nullptr) {
+      ESP_LOGW(TAG, "DCC Protocol is null, cannot toggle track power");
+      return;
+    }
+
+    if (trackPowerState == DCCExController::PowerOn) {
+      ESP_LOGI(TAG, "MainTrack power OFF requested");
+      dccProtocol->powerMainOff();
+    } else {
+      ESP_LOGI(TAG, "Main Track power ON requested");
+      dccProtocol->powerMainOn();
+    }
   }
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Screen.h"
+#include <DCCEXProtocol.h>
 #include <memory>
 
 namespace display {
@@ -33,6 +34,7 @@ public:
   void button_routes_callback(lv_event_t *e);
   void button_turntables_callback(lv_event_t *e);
   void button_refresh_callback(lv_event_t *e);
+  void button_track_power_callback(lv_event_t *e);
   void button_back_callback(lv_event_t *e);
 
 protected:
@@ -68,6 +70,12 @@ protected:
       self->button_refresh_callback(e);
   }
 
+  static void event_track_power_trampoline(lv_event_t *e) {
+    auto *self = static_cast<DCCMenu *>(lv_event_get_user_data(e));
+    if (self)
+      self->button_track_power_callback(e);
+  }
+
   static void event_back_trampoline(lv_event_t *e) {
     auto *self = static_cast<DCCMenu *>(lv_event_get_user_data(e));
     if (self)
@@ -81,6 +89,7 @@ private:
   lv_msg_sub_dsc_t *subscribe_dcc_turnout_received = nullptr;
   lv_msg_sub_dsc_t *subscribe_dcc_route_received = nullptr;
   lv_msg_sub_dsc_t *subscribe_dcc_turntable_received = nullptr;
+  lv_msg_sub_dsc_t *subscribe_dcc_track_power = nullptr;
 
   std::string ip;
   int port;
@@ -93,7 +102,9 @@ private:
   lv_obj_t *btn_routes;
   lv_obj_t *btn_turntables;
   lv_obj_t *btn_refresh;
+  lv_obj_t *btn_track_power;
   lv_obj_t *btn_close;
+  DCCExController::TrackPower trackPowerState = DCCExController::PowerOff;
 };
 
 } // namespace display

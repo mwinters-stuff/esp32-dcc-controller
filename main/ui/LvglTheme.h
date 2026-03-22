@@ -144,6 +144,10 @@ private:
     // .borderWidth(1)
     // .padAll(6);
     defineStyle("wifi.item.selected").bgColor(lv_color_hex(0x3399FF)).bgOpacity(LV_OPA_50).textColor(lv_color_white());
+
+    defineStyle("wifi.item.bold").bgColor(palette_.background)
+      .textColor(palette_.primary);
+
   }
 
   std::string name_;

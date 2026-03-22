@@ -37,6 +37,21 @@ void async_send_turnout(uint32_t msg_id, const TurnoutActionData &data) {
       m);
 }
 
+void async_send_u8(uint32_t msg_id, uint8_t value) {
+  struct Msg {
+    uint32_t id;
+    uint8_t value;
+  };
+  auto *m = new Msg{msg_id, value};
+  lv_async_call(
+      [](void *arg) {
+        auto *m = static_cast<Msg *>(arg);
+        lv_msg_send(m->id, &m->value);
+        delete m;
+      },
+      m);
+}
+
 } // namespace
 
 void DCCEXProtocolDelegateImpl::receivedServerVersion(int major, int minor, int patch) {
@@ -83,10 +98,12 @@ void DCCEXProtocolDelegateImpl::receivedLocoBroadcast(int address, int speed, DC
 
 void DCCEXProtocolDelegateImpl::receivedTrackPower(DCCExController::TrackPower state) {
   printf("Track Power State: %d\n", state);
+  async_send_u8(MSG_DCC_TRACK_POWER_CHANGED, static_cast<uint8_t>(state));
 }
 
 void DCCEXProtocolDelegateImpl::receivedIndividualTrackPower(DCCExController::TrackPower state, int track) {
   printf("Individual Track Power: Track=%d, State=%d\n", track, state);
+  async_send_u8(MSG_DCC_TRACK_POWER_CHANGED, static_cast<uint8_t>(state));
 }
 
 void DCCEXProtocolDelegateImpl::receivedTrackType(char track, DCCExController::TrackManagerMode type, int address) {
