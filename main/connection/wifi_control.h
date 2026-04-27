@@ -8,9 +8,9 @@
 
 #include <memory>
 
+#include "ESP_Millis.h"
 #include "dcc_delegate.h"
 #include "wifi_connection.h"
-#include "ESP_Millis.h"
 
 namespace utilities {
 
@@ -59,9 +59,14 @@ public:
   std::shared_ptr<DCCExController::DCCEXProtocol> dccProtocol() { return dccExProtocol; };
 
 private:
+  static err_t tcp_connected_callback(void *arg, struct tcp_pcb *tpcb, err_t err);
+  static void tcp_connect_err_callback(void *arg, err_t err);
   connection_state currentConnectionState = NOT_CONNECTED;
   uint64_t lastGetListsMs = 0;
   DCCExController::DCCMillis *dccMillis;
+  volatile bool connectCallbackDone_ = false;
+  volatile bool connectCallbackSuccess_ = false;
+  volatile err_t connectCallbackErr_ = ERR_OK;
 
   struct ConnectTaskArgs {
     WifiControl *self;

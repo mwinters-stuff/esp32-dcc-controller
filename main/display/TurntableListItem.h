@@ -18,7 +18,10 @@ public:
     this->index = index;
     lvObj = lv_list_add_btn_mode(parent, getImage(), getDisplayName().c_str(), LV_LABEL_LONG_MODE_DOTS);
     lv_obj_add_flag(lvObj, LV_OBJ_FLAG_EVENT_BUBBLE);
-    setStylePart(lvObj, "wifi.item.bold", LV_PART_MAIN);
+    lv_obj_set_flex_align(lvObj, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
+    lv_obj_set_height(lvObj, 48);
+    lv_obj_set_style_margin_bottom(lvObj, 2, LV_PART_MAIN);
+    setStylePart(lvObj, "list.item.bold", LV_PART_MAIN);
   }
 
   lv_obj_t *getLvObj() const override { return lvObj; }
@@ -45,8 +48,11 @@ public:
     this->index = index;
     lvObj = lv_list_add_btn_mode(parent, getImage(), getDisplayName().c_str(), LV_LABEL_LONG_MODE_DOTS);
     lv_obj_add_flag(lvObj, LV_OBJ_FLAG_EVENT_BUBBLE);
-    setStylePart(lvObj, "wifi.item", LV_PART_MAIN);
-    setStylePart(lvObj, "wifi.item.selected", LV_STATE_CHECKED);
+    lv_obj_set_flex_align(lvObj, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
+    lv_obj_set_height(lvObj, 48);
+    lv_obj_set_style_margin_bottom(lvObj, 2, LV_PART_MAIN);
+    setStylePart(lvObj, "list.item", LV_PART_MAIN);
+    setStylePart(lvObj, "list.item.selected", LV_STATE_CHECKED);
     lv_obj_set_style_pad_left(lvObj, 50, LV_PART_MAIN);
   }
 

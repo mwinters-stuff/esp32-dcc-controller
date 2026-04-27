@@ -43,6 +43,28 @@ void WifiControl::init() {
 
 bool WifiControl::connect() { return true; }
 
+err_t WifiControl::tcp_connected_callback(void *arg, struct tcp_pcb *tpcb, err_t err) {
+  (void)tpcb;
+  auto *self = static_cast<WifiControl *>(arg);
+  if (self == nullptr) {
+    return ERR_VAL;
+  }
+  self->connectCallbackErr_ = err;
+  self->connectCallbackSuccess_ = (err == ERR_OK);
+  self->connectCallbackDone_ = true;
+  return ERR_OK;
+}
+
+void WifiControl::tcp_connect_err_callback(void *arg, err_t err) {
+  auto *self = static_cast<WifiControl *>(arg);
+  if (self == nullptr) {
+    return;
+  }
+  self->connectCallbackErr_ = err;
+  self->connectCallbackSuccess_ = false;
+  self->connectCallbackDone_ = true;
+}
+
 void WifiControl::failError(err_t err) {
   switch (err) {
   case ERR_MEM:
@@ -106,62 +128,43 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
     return;
   }
 
+  connectCallbackDone_ = false;
+  connectCallbackSuccess_ = false;
+  connectCallbackErr_ = ERR_OK;
+
   // Attempt to connect
   LOCK_TCPIP_CORE();
-  err_t err = tcp_connect(pcb, &server_addr, port, nullptr);
+  tcp_arg(pcb, this);
+  tcp_err(pcb, tcp_connect_err_callback);
+  err_t err = tcp_connect(pcb, &server_addr, port, tcp_connected_callback);
   UNLOCK_TCPIP_CORE();
   if (err != ERR_OK) {
     ESP_LOGI(TAG, "Failed to initiate connection: %d\n", err);
     LOCK_TCPIP_CORE();
-    tcp_close(pcb);
+    enum tcp_state state = pcb->state;
+    if (state != CLOSED && state != TIME_WAIT) {
+      tcp_abort(pcb);
+    }
     UNLOCK_TCPIP_CORE();
     return;
   }
 
-  // Poll for connection status with a 20 second timeout
+  // Wait for lwIP connect/error callbacks with a 10 second timeout
   ESP_LOGI(TAG, "Connecting to server...");
   currentConnectionState = CONNECTING;
   const uint32_t timeout_ms = 10000;
   uint32_t start_time = millis();
-  while (currentConnectionState == CONNECTING) {
-    // Read PCB state under the lwIP core lock to avoid a data race with the lwIP task
-    LOCK_TCPIP_CORE();
-    enum tcp_state state = pcb->state;
-
-    if (state == ESTABLISHED) {
-      ESP_LOGI(TAG, "Connected to server: %s:%d\n", ipaddr_ntoa(&pcb->remote_ip), pcb->remote_port);
-      // TCPSocketStream constructor calls tcp_recv/tcp_arg — must stay inside the lock
-      stream = new TCPSocketStream(pcb);
-      UNLOCK_TCPIP_CORE();
-
-      logStream = new LoggingStream(nullptr);
-
-      dccExProtocol = std::make_shared<DCCExController::DCCEXProtocol>(dccMillis, 600);
-
-      dccExProtocol->setLogStream(logStream);
-      dccExProtocol->setDelegate(&dccDelegate);
-      dccExProtocol->connect(stream);
-      dccExProtocol->setDebug(true);
-      dccExProtocol->enableHeartbeat();
-      lastGetListsMs = millis();
-      currentConnectionState = CONNECTED;
-    } else if (state == CLOSED || state == TIME_WAIT || state == FIN_WAIT_1 || state == FIN_WAIT_2) {
-      printf("Connection failed or closed\n");
-      ESP_LOGI(TAG, "failed");
-      tcp_close(pcb);
-      UNLOCK_TCPIP_CORE();
-      currentConnectionState = DISCONNECTED;
-      return;
-    } else {
-      UNLOCK_TCPIP_CORE();
-    }
-
-    // Timeout check
+  while (!connectCallbackDone_) {
     uint32_t now = millis(); // Convert to milliseconds
     if (now - start_time > timeout_ms) {
       ESP_LOGI(TAG, "Connection timed out after 10 seconds");
       LOCK_TCPIP_CORE();
-      tcp_close(pcb);
+      tcp_arg(pcb, nullptr);
+      tcp_err(pcb, nullptr);
+      enum tcp_state state = pcb->state;
+      if (state != CLOSED && state != TIME_WAIT) {
+        tcp_abort(pcb);
+      }
       UNLOCK_TCPIP_CORE();
       currentConnectionState = DISCONNECTED;
       return;
@@ -170,6 +173,30 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
     // Add a small delay to avoid busy-waiting
     vTaskDelay(pdMS_TO_TICKS(100));
   }
+
+  if (!connectCallbackSuccess_) {
+    ESP_LOGI(TAG, "Connection failed in callback: %d", connectCallbackErr_);
+    currentConnectionState = DISCONNECTED;
+    return;
+  }
+
+  LOCK_TCPIP_CORE();
+  ESP_LOGI(TAG, "Connected to server: %s:%d\n", ipaddr_ntoa(&pcb->remote_ip), pcb->remote_port);
+  // TCPSocketStream constructor calls tcp_recv/tcp_arg — must stay inside the lock
+  stream = new TCPSocketStream(pcb);
+  UNLOCK_TCPIP_CORE();
+
+  logStream = new LoggingStream(nullptr);
+
+  dccExProtocol = std::make_shared<DCCExController::DCCEXProtocol>(dccMillis, 600);
+
+  dccExProtocol->setLogStream(logStream);
+  dccExProtocol->setDelegate(&dccDelegate);
+  dccExProtocol->connect(stream);
+  dccExProtocol->setDebug(true);
+  dccExProtocol->enableHeartbeat();
+  lastGetListsMs = millis();
+  currentConnectionState = CONNECTED;
 
   ESP_LOGI(TAG, "Connection process completed with state: %d", currentConnectionState);
 }
@@ -202,6 +229,10 @@ void WifiControl::loop() {
 }
 
 void WifiControl::startConnectToServer(const char *server_ip, uint16_t port) {
+  if (currentConnectionState == CONNECTING || currentConnectionState == CONNECTED) {
+    ESP_LOGI(TAG, "Ignoring connect request; current state=%d", currentConnectionState);
+    return;
+  }
   auto *args = new ConnectTaskArgs{this, server_ip, port};
   xTaskCreate(&WifiControl::connect_task, "connect_task", 4096, args, tskIDLE_PRIORITY, nullptr);
 }

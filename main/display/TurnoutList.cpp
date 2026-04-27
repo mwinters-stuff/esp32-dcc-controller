@@ -6,6 +6,7 @@
 #include "WaitingScreen.h"
 #include "connection/wifi_control.h"
 #include "definitions.h"
+#include "utilities/RotaryEncoder.h"
 #include "utilities/WifiHandler.h"
 #include <memory>
 #include <vector>
@@ -13,6 +14,17 @@
 namespace display {
 
 static const char *TAG = "TURNOUT_LIST_SCREEN";
+
+static void apply_focus_outline(lv_obj_t *obj, bool focused) {
+  if (!obj) {
+    return;
+  }
+
+  lv_obj_set_style_border_width(obj, focused ? 2 : 0, LV_PART_MAIN);
+  lv_obj_set_style_border_opa(obj, focused ? LV_OPA_100 : LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_color(obj, lv_color_hex(0x35B6FF), LV_PART_MAIN);
+  lv_obj_set_style_border_side(obj, focused ? LV_BORDER_SIDE_FULL : LV_BORDER_SIDE_NONE, LV_PART_MAIN);
+}
 
 void TurnoutListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
@@ -50,6 +62,9 @@ void TurnoutListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScree
       this);
 
   refreshList();
+  utilities::RotaryEncoder::instance()->setCallbacks(&TurnoutListScreen::rotary_rotate_trampoline,
+                                                     &TurnoutListScreen::rotary_click_trampoline,
+                                                     &TurnoutListScreen::rotary_long_press_trampoline, this);
 }
 
 void TurnoutListScreen::refreshList() {
@@ -78,6 +93,9 @@ void TurnoutListScreen::refreshList() {
                                                       turnout->getName(), turnout->getThrown());
     listItems.push_back(listItem);
   }
+
+  focusedIndex = listItems.empty() ? -1 : 0;
+  updateFocusedState();
 }
 
 void TurnoutListScreen::unsubscribeAll() {
@@ -96,6 +114,9 @@ void TurnoutListScreen::cleanUp() {
   list_turnouts = nullptr;
   btn_back = nullptr;
   currentButton = nullptr;
+  focusedIndex = -1;
+  pendingRotateSteps.store(0, std::memory_order_relaxed);
+  utilities::RotaryEncoder::instance()->clearCallbacks(this);
   lv_obj_clean(lvObj_);
 }
 
@@ -132,10 +153,130 @@ void TurnoutListScreen::button_listitem_click_event_callback(lv_event_t *e) {
 
     auto item = getItem(target);
     if (item) {
+      focusedIndex = static_cast<int>(item->index);
+      updateFocusedState();
       throwTurnout(item, !item->isThrown());
     } else {
       ESP_LOGW(TAG, "No item found for clicked button");
     }
+  }
+}
+
+void TurnoutListScreen::updateFocusedState() {
+  for (size_t i = 0; i < listItems.size(); ++i) {
+    auto obj = listItems[i]->getLvObj();
+    if (!obj) {
+      continue;
+    }
+    if (static_cast<int>(i) == focusedIndex) {
+      lv_obj_add_state(obj, LV_STATE_FOCUSED);
+      apply_focus_outline(obj, true);
+      lv_obj_scroll_to_view(obj, LV_ANIM_OFF);
+    } else {
+      lv_obj_clear_state(obj, LV_STATE_FOCUSED);
+      apply_focus_outline(obj, false);
+    }
+  }
+}
+
+void TurnoutListScreen::moveFocus(int direction) {
+  if (isCleanedUp || listItems.empty() || direction == 0) {
+    return;
+  }
+
+  int index = focusedIndex;
+  if (index < 0 || index >= static_cast<int>(listItems.size())) {
+    index = 0;
+  }
+
+  index = (index + direction) % static_cast<int>(listItems.size());
+  if (index < 0) {
+    index += static_cast<int>(listItems.size());
+  }
+
+  focusedIndex = index;
+  updateFocusedState();
+}
+
+void TurnoutListScreen::activateFocused() {
+  if (isCleanedUp || focusedIndex < 0 || focusedIndex >= static_cast<int>(listItems.size())) {
+    return;
+  }
+
+  auto item = listItems[focusedIndex];
+  if (item) {
+    throwTurnout(item, !item->isThrown());
+  }
+}
+
+void TurnoutListScreen::goBack() {
+  if (isCleanedUp) {
+    return;
+  }
+  if (auto screen = parentScreen_.lock()) {
+    cleanUp();
+    screen->showScreen();
+  }
+}
+
+void TurnoutListScreen::processPendingRotate() {
+  int32_t steps = pendingRotateSteps.exchange(0, std::memory_order_relaxed);
+  while (steps > 0) {
+    moveFocus(1);
+    --steps;
+  }
+  while (steps < 0) {
+    moveFocus(-1);
+    ++steps;
+  }
+}
+
+void TurnoutListScreen::rotary_rotate_trampoline(int32_t delta, void *userData) {
+  auto *self = static_cast<TurnoutListScreen *>(userData);
+  if (!self || self->isCleanedUp) {
+    return;
+  }
+
+  self->pendingRotateSteps.fetch_add(delta, std::memory_order_relaxed);
+  lv_async_call(&TurnoutListScreen::rotary_process_trampoline, self);
+}
+
+void TurnoutListScreen::rotary_click_trampoline(void *userData) {
+  auto *self = static_cast<TurnoutListScreen *>(userData);
+  if (!self || self->isCleanedUp) {
+    return;
+  }
+
+  lv_async_call(
+      [](void *ctx) {
+        auto *screen = static_cast<TurnoutListScreen *>(ctx);
+        if (screen && !screen->isCleanedUp) {
+          screen->activateFocused();
+        }
+      },
+      self);
+}
+
+void TurnoutListScreen::rotary_long_press_trampoline(void *userData) {
+  auto *self = static_cast<TurnoutListScreen *>(userData);
+  if (!self || self->isCleanedUp) {
+    return;
+  }
+
+  lv_async_call(
+      [](void *ctx) {
+        auto *screen = static_cast<TurnoutListScreen *>(ctx);
+        if (screen && !screen->isCleanedUp) {
+          screen->goBack();
+        }
+      },
+      self);
+}
+
+void TurnoutListScreen::rotary_process_trampoline(void *userData) {
+  auto *self = static_cast<TurnoutListScreen *>(userData);
+  if (self && !self->isCleanedUp) {
+    self->processPendingRotate();
   }
 }
 

@@ -38,8 +38,6 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
   list_auto = makeListView(lvObj_, 0, 40, 320, 380);
   lv_obj_add_event_cb(list_auto, event_listitem_click_trampoline, LV_EVENT_CLICKED, this);
 
-  // List for Saved
-  // list_saved = makeListView(tab_saved, 0, 0, LV_PCT(100), lv_obj_get_height(tab_saved));
 
   // Bottom Buttons
   btn_back = makeButton(lvObj_, "Back", 100, 40, LV_ALIGN_BOTTOM_LEFT, 8, -12, "button.secondary");
@@ -130,6 +128,11 @@ bool ConnectDCCScreen::loadSavedConnection(utilities::WithrottleDevice &outDevic
 void ConnectDCCScreen::refreshMdnsList() {
   if (isCleanedUp)
     return;
+
+  // Guard against stale callbacks after this screen's widgets have been deleted.
+  if (!lvObj_ || !lv_obj_is_valid(lvObj_) || !list_auto || !lv_obj_is_valid(list_auto) || lv_screen_active() != lvObj_)
+    return;
+
   auto wifiHandler = utilities::WifiHandler::instance();
   auto devices = wifiHandler->getWithrottleDevices();
   ESP_LOGI(TAG, "Refreshing mDNS list, found %d devices", devices.size());
@@ -179,14 +182,6 @@ void ConnectDCCScreen::resetMsgHandlers() {
   }
 }
 
-void ConnectDCCScreen::refreshSavedList() {
-  // for (const auto &item : savedListItems)
-  // {
-  //     // Assume item is already added to list_saved_ during save action
-  //     // If additional refresh logic is needed, implement here
-  // }
-}
-
 void ConnectDCCScreen::cleanUp() {
   ESP_LOGI(TAG, "Cleaning up ConnectDCCScreen");
   isCleanedUp = true;
@@ -224,6 +219,9 @@ void ConnectDCCScreen::connectToDCCDevice(const utilities::WithrottleDevice &dcc
 
   auto wifiHandler = utilities::WifiHandler::instance();
   auto wifiControl = utilities::WifiControl::instance();
+
+  // Stop receiving mDNS list updates while the waiting screen is active.
+  resetMsgHandlers();
 
   waitingScreen_ = std::make_shared<WaitingScreen>();
   waitingScreen_->setLabel("Connecting to:");

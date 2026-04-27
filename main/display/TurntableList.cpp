@@ -6,6 +6,7 @@
 #include "WaitingScreen.h"
 #include "connection/wifi_control.h"
 #include "definitions.h"
+#include "utilities/RotaryEncoder.h"
 #include "utilities/WifiHandler.h"
 #include <cstdio>
 #include <memory>
@@ -14,6 +15,17 @@
 namespace display {
 
 static const char *TAG = "Turntable_LIST_SCREEN";
+
+static void apply_focus_outline(lv_obj_t *obj, bool focused) {
+  if (!obj) {
+    return;
+  }
+
+  lv_obj_set_style_border_width(obj, focused ? 2 : 0, LV_PART_MAIN);
+  lv_obj_set_style_border_opa(obj, focused ? LV_OPA_100 : LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_color(obj, lv_color_hex(0x35B6FF), LV_PART_MAIN);
+  lv_obj_set_style_border_side(obj, focused ? LV_BORDER_SIDE_FULL : LV_BORDER_SIDE_NONE, LV_PART_MAIN);
+}
 
 void TurntableListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
@@ -57,6 +69,9 @@ void TurntableListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScr
       this);
 
   refreshList();
+  utilities::RotaryEncoder::instance()->setCallbacks(&TurntableListScreen::rotary_rotate_trampoline,
+                                                     &TurntableListScreen::rotary_click_trampoline,
+                                                     &TurntableListScreen::rotary_long_press_trampoline, this);
 }
 
 void TurntableListScreen::refreshList() {
@@ -91,6 +106,15 @@ void TurntableListScreen::refreshList() {
       listItems.push_back(indexListItem);
     }
   }
+
+  focusedIndex = -1;
+  for (size_t i = 0; i < listItems.size(); ++i) {
+    if (std::dynamic_pointer_cast<TurntableIndexListItem>(listItems[i])) {
+      focusedIndex = static_cast<int>(i);
+      break;
+    }
+  }
+  updateFocusedState();
 }
 
 void TurntableListScreen::unsubscribeAll() {
@@ -110,6 +134,9 @@ void TurntableListScreen::cleanUp() {
   list_Turntables = nullptr;
   btn_back = nullptr;
   currentButton = nullptr;
+  focusedIndex = -1;
+  pendingRotateSteps.store(0, std::memory_order_relaxed);
+  utilities::RotaryEncoder::instance()->clearCallbacks(this);
   lv_obj_clean(lvObj_);
 }
 
@@ -144,35 +171,167 @@ void TurntableListScreen::button_listitem_click_event_callback(lv_event_t *e) {
     // void * event_data = lv_event_get_user_data(e);
     ESP_LOGI(TAG, "Moving To: %s", lv_list_get_btn_text(list_Turntables, target));
 
-    auto item = getItem(target);
-    auto index = std::dynamic_pointer_cast<TurntableIndexListItem>(item);
-    if (index) {
-      if (isTurntableMoving(index->getTurntableId())) {
-        ESP_LOGW(TAG, "Ignoring index click while turntable ID %d is moving", index->getTurntableId());
-        return;
-      }
+    activateItem(target);
+  }
+}
 
-      const bool isSelectedIndex =
-          lv_obj_has_state(index->getLvObj(), LV_STATE_CHECKED) ||
-          (index->getTurntableId() == flashingTurntableId && index->getId() == flashingIndexId);
-      if (isSelectedIndex) {
-        auto wifiControl = utilities::WifiControl::instance();
-        auto dccProtocol = wifiControl->dccProtocol();
-        if (dccProtocol) {
-          char command[24];
-          snprintf(command, sizeof(command), "I %d 0 18", index->getTurntableId());
-          ESP_LOGI(TAG, "Re-click on highlighted turntable index, sending reverse command: <%s>", command);
-          dccProtocol->sendCommand(command);
-        } else {
-          ESP_LOGW(TAG, "DCC Protocol is null, cannot send turntable reverse command");
-        }
-        return;
-      }
+void TurntableListScreen::activateItem(lv_obj_t *target) {
+  auto item = getItem(target);
+  auto index = std::dynamic_pointer_cast<TurntableIndexListItem>(item);
+  if (index) {
+    focusedIndex = static_cast<int>(item->index);
+    updateFocusedState();
 
-      moveToIndex(index);
-    } else {
-      ESP_LOGW(TAG, "No item found for clicked button");
+    if (isTurntableMoving(index->getTurntableId())) {
+      ESP_LOGW(TAG, "Ignoring index click while turntable ID %d is moving", index->getTurntableId());
+      return;
     }
+
+    const bool isSelectedIndex = lv_obj_has_state(index->getLvObj(), LV_STATE_CHECKED) ||
+                                 (index->getTurntableId() == flashingTurntableId && index->getId() == flashingIndexId);
+    if (isSelectedIndex) {
+      auto wifiControl = utilities::WifiControl::instance();
+      auto dccProtocol = wifiControl->dccProtocol();
+      if (dccProtocol) {
+        char command[24];
+        snprintf(command, sizeof(command), "I %d 0 18", index->getTurntableId());
+        ESP_LOGI(TAG, "Re-click on highlighted turntable index, sending reverse command: <%s>", command);
+        dccProtocol->sendCommand(command);
+      } else {
+        ESP_LOGW(TAG, "DCC Protocol is null, cannot send turntable reverse command");
+      }
+      return;
+    }
+
+    moveToIndex(index);
+  } else {
+    ESP_LOGW(TAG, "No item found for clicked button");
+  }
+}
+
+void TurntableListScreen::updateFocusedState() {
+  for (size_t i = 0; i < listItems.size(); ++i) {
+    auto obj = listItems[i]->getLvObj();
+    if (!obj) {
+      continue;
+    }
+    if (static_cast<int>(i) == focusedIndex) {
+      lv_obj_add_state(obj, LV_STATE_FOCUSED);
+      apply_focus_outline(obj, true);
+      lv_obj_scroll_to_view(obj, LV_ANIM_OFF);
+    } else {
+      lv_obj_clear_state(obj, LV_STATE_FOCUSED);
+      apply_focus_outline(obj, false);
+    }
+  }
+}
+
+void TurntableListScreen::moveFocus(int direction) {
+  if (isCleanedUp || listItems.empty() || direction == 0) {
+    return;
+  }
+
+  int index = focusedIndex;
+  if (index < 0 || index >= static_cast<int>(listItems.size()) ||
+      !std::dynamic_pointer_cast<TurntableIndexListItem>(listItems[index])) {
+    index = -1;
+  }
+
+  for (size_t attempts = 0; attempts < listItems.size(); ++attempts) {
+    index += direction;
+    if (index >= static_cast<int>(listItems.size())) {
+      index = 0;
+    } else if (index < 0) {
+      index = static_cast<int>(listItems.size()) - 1;
+    }
+
+    if (std::dynamic_pointer_cast<TurntableIndexListItem>(listItems[index])) {
+      focusedIndex = index;
+      updateFocusedState();
+      return;
+    }
+  }
+}
+
+void TurntableListScreen::activateFocused() {
+  if (isCleanedUp || focusedIndex < 0 || focusedIndex >= static_cast<int>(listItems.size())) {
+    return;
+  }
+
+  auto item = listItems[focusedIndex];
+  if (item) {
+    activateItem(item->getLvObj());
+  }
+}
+
+void TurntableListScreen::goBack() {
+  if (isCleanedUp) {
+    return;
+  }
+  if (auto screen = parentScreen_.lock()) {
+    cleanUp();
+    screen->showScreen();
+  }
+}
+
+void TurntableListScreen::processPendingRotate() {
+  int32_t steps = pendingRotateSteps.exchange(0, std::memory_order_relaxed);
+  while (steps > 0) {
+    moveFocus(1);
+    --steps;
+  }
+  while (steps < 0) {
+    moveFocus(-1);
+    ++steps;
+  }
+}
+
+void TurntableListScreen::rotary_rotate_trampoline(int32_t delta, void *userData) {
+  auto *self = static_cast<TurntableListScreen *>(userData);
+  if (!self || self->isCleanedUp) {
+    return;
+  }
+
+  self->pendingRotateSteps.fetch_add(delta, std::memory_order_relaxed);
+  lv_async_call(&TurntableListScreen::rotary_process_trampoline, self);
+}
+
+void TurntableListScreen::rotary_click_trampoline(void *userData) {
+  auto *self = static_cast<TurntableListScreen *>(userData);
+  if (!self || self->isCleanedUp) {
+    return;
+  }
+
+  lv_async_call(
+      [](void *ctx) {
+        auto *screen = static_cast<TurntableListScreen *>(ctx);
+        if (screen && !screen->isCleanedUp) {
+          screen->activateFocused();
+        }
+      },
+      self);
+}
+
+void TurntableListScreen::rotary_long_press_trampoline(void *userData) {
+  auto *self = static_cast<TurntableListScreen *>(userData);
+  if (!self || self->isCleanedUp) {
+    return;
+  }
+
+  lv_async_call(
+      [](void *ctx) {
+        auto *screen = static_cast<TurntableListScreen *>(ctx);
+        if (screen && !screen->isCleanedUp) {
+          screen->goBack();
+        }
+      },
+      self);
+}
+
+void TurntableListScreen::rotary_process_trampoline(void *userData) {
+  auto *self = static_cast<TurntableListScreen *>(userData);
+  if (self && !self->isCleanedUp) {
+    self->processPendingRotate();
   }
 }
 

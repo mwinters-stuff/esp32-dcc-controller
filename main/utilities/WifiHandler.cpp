@@ -99,14 +99,8 @@ void WifiHandler::wifi_event_handler(void *arg, esp_event_base_t event_base, int
           lv_msg_send(MSG_WIFI_CONNECTED, NULL);
         },
         nullptr);
-    xTaskCreate(
-        [](void *parameters) {
-          WifiHandler *self = static_cast<WifiHandler *>(parameters);
-          vTaskDelay(pdMS_TO_TICKS(1000));
-          self->startMdnsSearchLoop(5000 /*interval_ms*/, 2000 /*query_timeout_ms*/, 10 /*max_results*/);
-          vTaskDelete(nullptr);
-        },
-        "wifi_init_del", 4096, self, tskIDLE_PRIORITY + 1, nullptr);
+
+    self->startMdnsSearchLoop(5000 /*interval_ms*/, 2000 /*query_timeout_ms*/, 10 /*max_results*/);
   }
 }
 
@@ -409,6 +403,7 @@ void WifiHandler::startMdnsSearchLoop(uint32_t interval_ms /*= 5000*/, uint32_t 
 
 // Stop the continuous mDNS search loop.
 void WifiHandler::stopMdnsSearchLoop() {
+  ESP_LOGI(TAG, "Stopping mDNS search loop");
   if (!s_mdns_search_running)
     return;
 

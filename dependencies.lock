@@ -20,6 +20,30 @@ dependencies:
       path: .
       type: git
     version: 6f6e9a052fc719ecb2b42640b0207215050d2560
+  espressif/button:
+    component_hash: d0afa32f0e50d60bc0c6fc23f7eea98adc6b02cfe70b590bc52c23c506745287
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: '*'
+    - name: idf
+      require: private
+      version: '>=4.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 4.1.6
+  espressif/cmake_utilities:
+    component_hash: 05165f30922b422b4b90c08845e6d449329b97370fbd06309803d8cb539d79e3
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.1'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.1.1
   espressif/mdns:
     component_hash: 7c0fa01a1cd0e72a87ec1928c3b661c0a3a9034a6d3a69dcf4850db8c6f272db
     dependencies:
@@ -44,9 +68,10 @@ dependencies:
 direct_dependencies:
 - DCCEXProtocol
 - LovyanGFX
+- espressif/button
 - espressif/mdns
 - idf
 - lvgl/lvgl
-manifest_hash: dca84f0e037bd5b0448f596154eb882da9d9df373f6ccbdc7455ed99a4aa6a85
+manifest_hash: dd852ebb53be201524ad18800006aaae05e9af545869cfd92e9b76a1a3414c4d
 target: esp32s3
 version: 2.0.0

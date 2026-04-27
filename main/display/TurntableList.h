@@ -1,5 +1,6 @@
 #pragma once
 #include "Screen.h"
+#include <atomic>
 #include <memory>
 
 #include "ListItemBase.h"
@@ -34,12 +35,24 @@ public:
 private:
   void setTurntableIndexCheckedState(int turntableId, int indexId, bool checked);
   void setExclusiveTurntableIndexChecked(int turntableId, int indexId);
+  void updateFocusedState();
+  void moveFocus(int direction);
+  void activateFocused();
+  void goBack();
+  void processPendingRotate();
+  void activateItem(lv_obj_t *target);
+  static void rotary_rotate_trampoline(int32_t delta, void *userData);
+  static void rotary_click_trampoline(void *userData);
+  static void rotary_long_press_trampoline(void *userData);
+  static void rotary_process_trampoline(void *userData);
   void startTurntableFlashing(int turntableId, int indexId);
   void stopTurntableFlashing(bool keepHighlighted);
   void onFlashTimerTick();
   bool isTurntableMoving(int turntableId) const;
 
   std::vector<std::shared_ptr<IListItem>> listItems;
+  int focusedIndex = -1;
+  std::atomic<int32_t> pendingRotateSteps{0};
   std::shared_ptr<TurntableListItem> getItemByTurntableId(int TurntableId);
   std::shared_ptr<TurntableIndexListItem> getIndexItemByTurntableAndIndex(int turntableId, int indexId);
 

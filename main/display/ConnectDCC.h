@@ -29,7 +29,6 @@ public:
   void connectToDCCServer(std::shared_ptr<DCCConnectListItem> dccItem);
 
   void refreshMdnsList();
-  void refreshSavedList();
   void resetMsgHandlers();
   std::shared_ptr<DCCConnectListItem> getItem(lv_obj_t *bn);
 

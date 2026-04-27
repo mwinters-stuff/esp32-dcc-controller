@@ -14,4 +14,57 @@ menu "Example Configuration"
             Enable this to scan only the non overlapping channels i.e 1,6,11 by mentioning a channel bitmap
             in scan config. If you wish to scan a different set of specific channels, please edit the channel_list
             array in scan.c. Channels for a 2.4 ghz network range should range from 1-14.
+
+    config ROTARY_ENCODER_ENABLE
+        bool "Enable rotary encoder"
+        default n
+        help
+            Enable support for a quadrature rotary encoder using the espressif/knob component.
+
+    config ROTARY_ENCODER_GPIO_A
+        int "Rotary encoder GPIO A"
+        range 0 48
+        default 4
+        depends on ROTARY_ENCODER_ENABLE
+        help
+            GPIO number connected to encoder channel A.
+
+    config ROTARY_ENCODER_GPIO_B
+        int "Rotary encoder GPIO B"
+        range 0 48
+        default 5
+        depends on ROTARY_ENCODER_ENABLE
+        help
+            GPIO number connected to encoder channel B.
+
+    config ROTARY_ENCODER_DEFAULT_DIRECTION
+        int "Rotary encoder default direction"
+        range 0 1
+        default 0
+        depends on ROTARY_ENCODER_ENABLE
+        help
+            0: clockwise increases count, 1: clockwise decreases count.
+
+    config ROTARY_ENCODER_SW_ENABLE
+        bool "Enable rotary encoder SW button"
+        default y
+        depends on ROTARY_ENCODER_ENABLE
+        help
+            Enable support for the encoder center push button (SW).
+
+    config ROTARY_ENCODER_GPIO_SW
+        int "Rotary encoder GPIO SW"
+        range 0 48
+        default 6
+        depends on ROTARY_ENCODER_SW_ENABLE
+        help
+            GPIO number connected to encoder push switch (SW).
+
+    config ROTARY_ENCODER_SW_ACTIVE_LEVEL
+        int "Rotary encoder SW active level"
+        range 0 1
+        default 0
+        depends on ROTARY_ENCODER_SW_ENABLE
+        help
+            0: active low, 1: active high.
 endmenu

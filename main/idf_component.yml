@@ -13,6 +13,8 @@ dependencies:
       - if: "target in [esp32p4, esp32h2]"
   espressif/mdns:
     version: "^1.9.0"
+  espressif/button:
+    version: "^4.1.6"
     
   # lvgl/lvgl: ~8.4.0
   lvgl/lvgl: ^9.5.0

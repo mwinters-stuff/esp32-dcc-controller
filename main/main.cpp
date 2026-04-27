@@ -1,3 +1,4 @@
+#include "ESP_Millis.h"
 #include "LGFX_ILI9488_S3.hpp"
 #include "definitions.h"
 #include "display/DisplayManager.h"
@@ -5,8 +6,8 @@
 #include "display/ManualCalibration.h"
 #include "display/MessageBox.h"
 #include "display/WifiConnectScreen.h"
-#include "ESP_Millis.h"
 #include "ui/LvglTheme.h"
+#include "utilities/RotaryEncoder.h"
 #include "utilities/WifiHandler.h"
 #include <LovyanGFX.hpp>
 #include <atomic>
@@ -150,6 +151,27 @@ void setup() {
   auto theme = std::make_shared<ui::LvglTheme>("Default");
   ui::LvglTheme::setActive(theme);
 
+#if CONFIG_ROTARY_ENCODER_ENABLE
+  utilities::RotaryEncoder::instance()->init(
+      static_cast<gpio_num_t>(CONFIG_ROTARY_ENCODER_GPIO_A), static_cast<gpio_num_t>(CONFIG_ROTARY_ENCODER_GPIO_B),
+      CONFIG_ROTARY_ENCODER_DEFAULT_DIRECTION == 1,
+#if CONFIG_ROTARY_ENCODER_SW_ENABLE
+      true, static_cast<gpio_num_t>(CONFIG_ROTARY_ENCODER_GPIO_SW), CONFIG_ROTARY_ENCODER_SW_ACTIVE_LEVEL
+#else
+      false, GPIO_NUM_NC, 0
+#endif
+  );
+  utilities::RotaryEncoder::instance()->setActivityCallback(
+      [](void *disp) {
+        lv_async_call(
+            [](void *d) {
+              lv_display_trigger_activity(static_cast<lv_display_t *>(d));
+            },
+            disp);
+      },
+      lvgl_disp);
+#endif
+
   // Global handlers: show a message and return to the home screen once confirmed.
   lv_msg_subscribe(
       MSG_WIFI_FAILED,
@@ -169,8 +191,16 @@ void setup() {
       nullptr);
 
   lv_msg_subscribe(
+      MSG_DCC_CONNECTION_SUCCESS,
+      [](lv_msg_t *) {
+        utilities::WifiHandler::instance()->stopMdnsSearchLoop();
+      },
+      nullptr);
+
+  lv_msg_subscribe(
       MSG_DCC_DISCONNECTED,
       [](lv_msg_t *) {
+        utilities::WifiHandler::instance()->startMdnsSearchLoop();
         lv_async_call(
             [](void *) {
               display::showMessageBox("DCC Disconnected", "Connection to the DCC server was lost.",

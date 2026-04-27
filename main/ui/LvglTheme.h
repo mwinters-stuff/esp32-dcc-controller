@@ -139,15 +139,37 @@ private:
 
     defineStyle("list.main").bgColor(palette_.background).borderWidth(2).padAll(6);
 
-    defineStyle("wifi.item").bgColor(palette_.background);
-    // .borderColor(lv_color_hex(0xD0D0D0));
-    // .borderWidth(1)
-    // .padAll(6);
-    defineStyle("wifi.item.selected").bgColor(lv_color_hex(0x3399FF)).bgOpacity(LV_OPA_50).textColor(lv_color_white());
+    defineStyle("wifi.item")
+      .bgColor(palette_.background)
+      .textFont(fonts_.medium);
+
+    defineStyle("wifi.item.selected")
+      .bgColor(lv_color_hex(0x3399FF))
+      .bgOpacity(LV_OPA_50)
+      .textColor(lv_color_white())
+      .textFont(fonts_.medium);
+
 
     defineStyle("wifi.item.bold").bgColor(palette_.background)
-      .textColor(palette_.primary);
+      .textColor(palette_.primary)
+      .textFont(fonts_.medium);
 
+
+    defineStyle("list.item")
+      .bgColor(palette_.background)
+      .textFont(fonts_.medium);
+
+    defineStyle("list.item.selected")
+      .bgColor(lv_color_hex(0x3399FF))
+      .bgOpacity(LV_OPA_50)
+      .textColor(lv_color_white())
+      .textFont(fonts_.medium);
+
+
+    defineStyle("list.item.bold")
+      .bgColor(palette_.background)
+      .textColor(palette_.primary)
+      .textFont(fonts_.medium);
   }
 
   std::string name_;
