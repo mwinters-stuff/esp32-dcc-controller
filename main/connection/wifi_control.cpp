@@ -136,7 +136,7 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
 
       logStream = new LoggingStream(nullptr);
 
-      dccExProtocol = std::make_shared<DCCExController::DCCEXProtocol>(dccMillis);
+      dccExProtocol = std::make_shared<DCCExController::DCCEXProtocol>(dccMillis, 600);
 
       dccExProtocol->setLogStream(logStream);
       dccExProtocol->setDelegate(&dccDelegate);
@@ -163,6 +163,7 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
       LOCK_TCPIP_CORE();
       tcp_close(pcb);
       UNLOCK_TCPIP_CORE();
+      currentConnectionState = DISCONNECTED;
       return;
     }
 

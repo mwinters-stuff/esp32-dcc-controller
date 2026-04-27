@@ -19,7 +19,6 @@ public:
     lvObj = lv_list_add_btn_mode(parent, getImage(), getDisplayName().c_str(), LV_LABEL_LONG_MODE_DOTS);
     lv_obj_add_flag(lvObj, LV_OBJ_FLAG_EVENT_BUBBLE);
     setStylePart(lvObj, "wifi.item.bold", LV_PART_MAIN);
-    // setStylePart(lvObj, "wifi.item.selected", LV_STATE_CHECKED);
   }
 
   lv_obj_t *getLvObj() const override { return lvObj; }

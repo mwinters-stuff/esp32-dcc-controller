@@ -7,6 +7,7 @@
 #include "connection/wifi_control.h"
 #include "definitions.h"
 #include "utilities/WifiHandler.h"
+#include <cstdio>
 #include <memory>
 #include <vector>
 
@@ -30,6 +31,30 @@ void TurntableListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScr
   // Bottom Buttons
   btn_back = makeButton(lvObj_, "Back", 100, 40, LV_ALIGN_BOTTOM_LEFT, 8, -12, "button.secondary");
   lv_obj_add_event_cb(btn_back, &TurntableListScreen::event_back_trampoline, LV_EVENT_CLICKED, this);
+
+  turntable_changed_sub = lv_msg_subscribe(
+      MSG_DCC_TURNTABLE_CHANGED,
+      [](lv_msg_t *msg) {
+        TurntableListScreen *self = static_cast<TurntableListScreen *>(lv_msg_get_user_data(msg));
+        if (!self || self->isCleanedUp)
+          return;
+        ESP_LOGI(TAG, "Turntable changed message received");
+        TurntableActionData *data = static_cast<TurntableActionData *>(const_cast<void *>(lv_msg_get_payload(msg)));
+        ESP_LOGI(TAG, "Turntable ID=%d position=%d moving=%s", data->turntableId, data->position,
+                 data->moving ? "moving" : "stopped");
+        auto item = self->getIndexItemByTurntableAndIndex(data->turntableId, data->position);
+        if (item) {
+          if (data->moving) {
+            self->startTurntableFlashing(data->turntableId, data->position);
+          } else {
+            self->startTurntableFlashing(data->turntableId, data->position);
+            self->stopTurntableFlashing(true);
+          }
+        } else {
+          ESP_LOGW(TAG, "No item found for turntable ID %d Position %d", data->turntableId, data->position);
+        }
+      },
+      this);
 
   refreshList();
 }
@@ -68,11 +93,17 @@ void TurntableListScreen::refreshList() {
   }
 }
 
-void TurntableListScreen::unsubscribeAll() {}
+void TurntableListScreen::unsubscribeAll() {
+  if (turntable_changed_sub) {
+    lv_msg_unsubscribe(turntable_changed_sub);
+    turntable_changed_sub = nullptr;
+  }
+}
 
 void TurntableListScreen::cleanUp() {
   ESP_LOGI(TAG, "Cleaning up TurntableListScreen");
   isCleanedUp = true;
+  stopTurntableFlashing(false);
   unsubscribeAll();
   listItems.clear();
   lbl_title = nullptr;
@@ -116,6 +147,28 @@ void TurntableListScreen::button_listitem_click_event_callback(lv_event_t *e) {
     auto item = getItem(target);
     auto index = std::dynamic_pointer_cast<TurntableIndexListItem>(item);
     if (index) {
+      if (isTurntableMoving(index->getTurntableId())) {
+        ESP_LOGW(TAG, "Ignoring index click while turntable ID %d is moving", index->getTurntableId());
+        return;
+      }
+
+      const bool isSelectedIndex =
+          lv_obj_has_state(index->getLvObj(), LV_STATE_CHECKED) ||
+          (index->getTurntableId() == flashingTurntableId && index->getId() == flashingIndexId);
+      if (isSelectedIndex) {
+        auto wifiControl = utilities::WifiControl::instance();
+        auto dccProtocol = wifiControl->dccProtocol();
+        if (dccProtocol) {
+          char command[24];
+          snprintf(command, sizeof(command), "I %d 0 18", index->getTurntableId());
+          ESP_LOGI(TAG, "Re-click on highlighted turntable index, sending reverse command: <%s>", command);
+          dccProtocol->sendCommand(command);
+        } else {
+          ESP_LOGW(TAG, "DCC Protocol is null, cannot send turntable reverse command");
+        }
+        return;
+      }
+
       moveToIndex(index);
     } else {
       ESP_LOGW(TAG, "No item found for clicked button");
@@ -161,6 +214,112 @@ std::shared_ptr<TurntableListItem> TurntableListScreen::getItemByTurntableId(int
     }
   }
   return nullptr;
+}
+
+std::shared_ptr<TurntableIndexListItem> TurntableListScreen::getIndexItemByTurntableAndIndex(int turntableId,
+                                                                                             int indexId) {
+  for (const auto &item : listItems) {
+    auto indexItem = std::dynamic_pointer_cast<TurntableIndexListItem>(item);
+    if (indexItem && indexItem->getTurntableId() == turntableId && indexItem->getId() == indexId) {
+      return indexItem;
+    }
+  }
+  return nullptr;
+}
+
+void TurntableListScreen::setTurntableIndexCheckedState(int turntableId, int indexId, bool checked) {
+  for (const auto &item : listItems) {
+    auto indexItem = std::dynamic_pointer_cast<TurntableIndexListItem>(item);
+    if (!indexItem) {
+      continue;
+    }
+
+    if (indexItem->getTurntableId() == turntableId && indexItem->getId() == indexId) {
+      if (checked) {
+        lv_obj_add_state(indexItem->getLvObj(), LV_STATE_CHECKED);
+      } else {
+        lv_obj_clear_state(indexItem->getLvObj(), LV_STATE_CHECKED);
+      }
+      return;
+    }
+  }
+}
+
+void TurntableListScreen::setExclusiveTurntableIndexChecked(int turntableId, int indexId) {
+  for (const auto &item : listItems) {
+    auto indexItem = std::dynamic_pointer_cast<TurntableIndexListItem>(item);
+    if (!indexItem) {
+      continue;
+    }
+
+    if (indexItem->getTurntableId() != turntableId) {
+      continue;
+    }
+
+    if (indexItem->getId() == indexId) {
+      lv_obj_add_state(indexItem->getLvObj(), LV_STATE_CHECKED);
+    } else {
+      lv_obj_clear_state(indexItem->getLvObj(), LV_STATE_CHECKED);
+    }
+  }
+}
+
+void TurntableListScreen::startTurntableFlashing(int turntableId, int indexId) {
+  if (flashingTurntableId != turntableId || flashingIndexId != indexId) {
+    stopTurntableFlashing(false);
+    flashingTurntableId = turntableId;
+    flashingIndexId = indexId;
+  }
+
+  setExclusiveTurntableIndexChecked(turntableId, indexId);
+  flashCheckedState = true;
+
+  if (!turntable_flash_timer) {
+    turntable_flash_timer = lv_timer_create(&TurntableListScreen::flash_timer_trampoline, 300, this);
+  } else {
+    lv_timer_resume(turntable_flash_timer);
+  }
+}
+
+void TurntableListScreen::stopTurntableFlashing(bool keepHighlighted) {
+  if (turntable_flash_timer) {
+    lv_timer_del(turntable_flash_timer);
+    turntable_flash_timer = nullptr;
+  }
+
+  if (flashingTurntableId >= 0) {
+    if (keepHighlighted) {
+      setExclusiveTurntableIndexChecked(flashingTurntableId, flashingIndexId);
+    } else {
+      setTurntableIndexCheckedState(flashingTurntableId, flashingIndexId, false);
+    }
+  }
+
+  flashingTurntableId = -1;
+  flashingIndexId = -1;
+  flashCheckedState = false;
+}
+
+void TurntableListScreen::onFlashTimerTick() {
+  if (isCleanedUp || flashingTurntableId < 0) {
+    return;
+  }
+
+  auto item = getIndexItemByTurntableAndIndex(flashingTurntableId, flashingIndexId);
+  if (!item) {
+    return;
+  }
+
+  flashCheckedState = !flashCheckedState;
+  if (flashCheckedState) {
+    lv_obj_add_state(item->getLvObj(), LV_STATE_CHECKED);
+  } else {
+    lv_obj_clear_state(item->getLvObj(), LV_STATE_CHECKED);
+  }
+}
+
+bool TurntableListScreen::isTurntableMoving(int turntableId) const {
+  return turntable_flash_timer != nullptr && flashingTurntableId == turntableId;
 }
 
 } // namespace display

@@ -10,6 +10,12 @@ struct TurnoutActionData{
   bool thrown;
 };
 
+struct TurntableActionData{
+  int turntableId;
+  int position;
+  bool moving;
+};
+
 class DCCEXProtocolDelegateImpl : public DCCExController::DCCEXProtocolDelegate {
 public:
     DCCEXProtocolDelegateImpl() {}
@@ -54,6 +60,7 @@ public:
     void receivedScreenUpdate(int screen, int row, const char *message) override;
 
     TurnoutActionData turnoutActionData;
+    TurntableActionData turntableActionData;
 };
 
 #endif

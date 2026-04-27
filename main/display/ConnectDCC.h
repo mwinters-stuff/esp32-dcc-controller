@@ -5,6 +5,8 @@
 #include "DCCConnectListItem.h"
 
 namespace display {
+class WaitingScreen;
+
 class ConnectDCCScreen : public Screen, public std::enable_shared_from_this<ConnectDCCScreen> {
 public:
   static std::shared_ptr<ConnectDCCScreen> instance() {
@@ -20,6 +22,10 @@ public:
   void show(lv_obj_t *parent = nullptr, std::weak_ptr<Screen> parentScreen = std::weak_ptr<Screen>{}) override;
   void cleanUp() override;
 
+  static bool loadSavedConnection(utilities::WithrottleDevice &outDevice);
+  static bool isBootAutoConnectHandled();
+  static void markBootAutoConnectHandled();
+
   void connectToDCCServer(std::shared_ptr<DCCConnectListItem> dccItem);
 
   void refreshMdnsList();
@@ -33,20 +39,29 @@ public:
   void button_listitem_click_event_callback(lv_event_t *e);
 
 private:
+  bool saveSelectedConnection();
+  bool maybeAutoConnectSaved();
+  void connectToDCCDevice(const utilities::WithrottleDevice &dccDevice);
+
   std::vector<std::shared_ptr<DCCConnectListItem>> detectedListItems;
   std::shared_ptr<DCCConnectListItem> savedListItem;
 
   lv_msg_sub_dsc_t *mdns_added_sub = nullptr;
   lv_msg_sub_dsc_t *mdns_changed_sub = nullptr;
   lv_msg_sub_dsc_t *connect_success = nullptr;
+  lv_msg_sub_dsc_t *wifi_connected_sub = nullptr;
+
+  static bool bootAutoConnectHandled;
 
   bool isCleanedUp = false;
+  bool autoConnectAttempted = false;
   lv_obj_t *lbl_title = nullptr;
   lv_obj_t *list_auto = nullptr;
   lv_obj_t *btn_back = nullptr;
   lv_obj_t *btn_save = nullptr;
   lv_obj_t *btn_connect = nullptr;
   lv_obj_t *currentButton = nullptr;
+  std::shared_ptr<WaitingScreen> waitingScreen_ = nullptr;
 
 protected:
   ConnectDCCScreen() = default;

@@ -4,12 +4,46 @@
 #include "ManualCalibration.h"
 #include "WaitingScreen.h"
 #include "WifiListScreen.h"
+#include "connection/wifi_control.h"
 #include "definitions.h"
 #include "utilities/WifiHandler.h"
 #include <esp_log.h>
 
 namespace display {
 static const char *TAG = "FIRST_SCREEN";
+
+namespace {
+void tryAutoConnectSavedDccFromMain(display::FirstScreen *self) {
+  if (!self)
+    return;
+
+  if (display::ConnectDCCScreen::isBootAutoConnectHandled()) {
+    return;
+  }
+
+  auto wifiHandler = utilities::WifiHandler::instance();
+  if (!wifiHandler->isConnected()) {
+    return;
+  }
+
+  auto wifiControl = utilities::WifiControl::instance();
+  if (wifiControl->connectionState() == utilities::WifiControl::CONNECTING ||
+      wifiControl->connectionState() == utilities::WifiControl::CONNECTED) {
+    display::ConnectDCCScreen::markBootAutoConnectHandled();
+    return;
+  }
+
+  utilities::WithrottleDevice savedDevice;
+  if (!display::ConnectDCCScreen::loadSavedConnection(savedDevice)) {
+    display::ConnectDCCScreen::markBootAutoConnectHandled();
+    return;
+  }
+
+  ESP_LOGI(TAG, "Saved DCC connection found. Opening Connect DCC screen for auto-connect.");
+  self->cleanUp();
+  display::ConnectDCCScreen::instance()->showScreen(display::FirstScreen::instance());
+}
+} // namespace
 
 void FirstScreen::wifi_connected_callback(lv_msg_t *msg) {
   if (isCleanedUp)
@@ -22,6 +56,8 @@ void FirstScreen::wifi_connected_callback(lv_msg_t *msg) {
     if (auto ip = utilities::WifiHandler::instance()->getIpAddress(); !ip.empty())
       lv_label_set_text(lbl_ip, ip.c_str());
   }
+
+  tryAutoConnectSavedDccFromMain(this);
 }
 
 void FirstScreen::wifi_not_saved_callback(lv_msg_t *msg) {
@@ -98,6 +134,7 @@ void FirstScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
     enableButtons(false);
   } else {
     enableButtons(true);
+    tryAutoConnectSavedDccFromMain(this);
   }
 }
 

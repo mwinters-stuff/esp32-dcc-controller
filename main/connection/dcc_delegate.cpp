@@ -37,6 +37,21 @@ void async_send_turnout(uint32_t msg_id, const TurnoutActionData &data) {
       m);
 }
 
+void async_send_turntable(uint32_t msg_id, const TurntableActionData &data) {
+  struct Msg {
+    uint32_t id;
+    TurntableActionData data;
+  };
+  auto *m = new Msg{msg_id, data};
+  lv_async_call(
+      [](void *arg) {
+        auto *m = static_cast<Msg *>(arg);
+        lv_msg_send(m->id, &m->data);
+        delete m;
+      },
+      m);
+}
+
 void async_send_u8(uint32_t msg_id, uint8_t value) {
   struct Msg {
     uint32_t id;
@@ -119,6 +134,10 @@ void DCCEXProtocolDelegateImpl::receivedTurnoutAction(int turnoutId, bool thrown
 
 void DCCEXProtocolDelegateImpl::receivedTurntableAction(int turntableId, int position, bool moving) {
   printf("Turntable Action: ID=%d, Position=%d, Moving=%s\n", turntableId, position, moving ? "true" : "false");
+  turntableActionData.turntableId = turntableId;
+  turntableActionData.position = position;
+  turntableActionData.moving = moving;
+  async_send_turntable(MSG_DCC_TURNTABLE_CHANGED, turntableActionData);
 }
 
 void DCCEXProtocolDelegateImpl::receivedReadLoco(int address) { printf("Read Loco Address: %d\n", address); }

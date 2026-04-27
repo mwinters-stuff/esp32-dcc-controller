@@ -1,9 +1,15 @@
 #include "WaitingScreen.h"
+#include "FirstScreen.h"
 #include "LvglWrapper.h"
+#include "MessageBox.h"
 #include "definitions.h"
 
 namespace display {
 using namespace ui;
+
+namespace {
+void return_to_main_screen(void *) { display::FirstScreen::instance()->showScreen(); }
+} // namespace
 
 void WaitingScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
@@ -31,31 +37,9 @@ void WaitingScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
         auto self = static_cast<WaitingScreen *>(lv_msg_get_user_data(msg));
         if (self->isCleanedUp)
           return;
-        self->setLabel("Connection Failed");
-
-        // Stop and delete any previous failure timer before creating a new one
-        if (self->failure_timer) {
-          esp_timer_stop(self->failure_timer);
-          esp_timer_delete(self->failure_timer);
-          self->failure_timer = nullptr;
-        }
-
-        // 5-second timer to return to parent screen
-        esp_timer_create_args_t timer_args = {.callback =
-                                                  [](void *arg) {
-                                                    auto screen = static_cast<WaitingScreen *>(arg);
-
-                                                    if (auto parent = screen->parentScreen_.lock()) {
-                                                      screen->unsubscribeAll();
-                                                      parent->showScreen();
-                                                    }
-                                                  },
-                                              .arg = self,
-                                              .dispatch_method = ESP_TIMER_TASK,
-                                              .name = "waiting_screen_timer",
-                                              .skip_unhandled_events = false};
-        esp_timer_create(&timer_args, &self->failure_timer);
-        esp_timer_start_once(self->failure_timer, 5000000); // 5 seconds in microseconds
+        self->unsubscribeAll();
+        display::showMessageBox("Connection Failed", "Could not connect to DCC server.",
+                                display::MessageBoxState::Error, return_to_main_screen, nullptr);
       },
       this);
 }

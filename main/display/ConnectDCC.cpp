@@ -2,20 +2,28 @@
 #include "DCCMenu.h"
 #include "FirstScreen.h"
 #include "LvglWrapper.h"
+#include "MessageBox.h"
 #include "Screen.h"
 #include "WaitingScreen.h"
 #include "connection/wifi_control.h"
 #include "definitions.h"
 #include "utilities/WifiHandler.h"
 #include <memory>
+#include <nvs_handle.hpp>
 #include <vector>
 
 namespace display {
 
 static const char *TAG = "DCC_CONNECT_SCREEN";
+bool ConnectDCCScreen::bootAutoConnectHandled = false;
+
+bool ConnectDCCScreen::isBootAutoConnectHandled() { return bootAutoConnectHandled; }
+
+void ConnectDCCScreen::markBootAutoConnectHandled() { bootAutoConnectHandled = true; }
 
 void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
+  autoConnectAttempted = false;
   lv_obj_clean(lv_screen_active());
   lvObj_ = lv_screen_active();
 
@@ -63,7 +71,60 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
         // ConnectDCCScreen *self = static_cast<ConnectDCCScreen *>(lv_msg_get_user_data(msg));
       },
       this);
+
+  wifi_connected_sub = lv_msg_subscribe(
+      MSG_WIFI_CONNECTED,
+      [](lv_msg_t *msg) {
+        ConnectDCCScreen *self = static_cast<ConnectDCCScreen *>(lv_msg_get_user_data(msg));
+        if (!self || self->isCleanedUp)
+          return;
+        self->maybeAutoConnectSaved();
+      },
+      this);
+
   refreshMdnsList();
+  maybeAutoConnectSaved();
+}
+
+bool ConnectDCCScreen::loadSavedConnection(utilities::WithrottleDevice &outDevice) {
+  esp_err_t err = ESP_OK;
+  std::unique_ptr<nvs::NVSHandle> handle = nvs::open_nvs_handle(NVS_NAMESPACE_DCC, NVS_READONLY, &err);
+  if (err != ESP_OK || !handle) {
+    return false;
+  }
+
+  uint8_t saved = 0;
+  err = handle->get_item(NVS_DCC_SAVED, saved);
+  if (err != ESP_OK || saved == 0) {
+    return false;
+  }
+
+  char ip[16] = {0};
+  uint16_t port = 0;
+  err = handle->get_string(NVS_DCC_IP, ip, sizeof(ip));
+  if (err != ESP_OK || ip[0] == '\0') {
+    return false;
+  }
+
+  err = handle->get_item(NVS_DCC_PORT, port);
+  if (err != ESP_OK || port == 0) {
+    return false;
+  }
+
+  char instance[64] = {0};
+  char hostname[64] = {0};
+  if (handle->get_string(NVS_DCC_INSTANCE, instance, sizeof(instance)) != ESP_OK) {
+    instance[0] = '\0';
+  }
+  if (handle->get_string(NVS_DCC_HOSTNAME, hostname, sizeof(hostname)) != ESP_OK) {
+    hostname[0] = '\0';
+  }
+
+  outDevice.ip = ip;
+  outDevice.port = port;
+  outDevice.instance = instance;
+  outDevice.hostname = hostname;
+  return true;
 }
 
 void ConnectDCCScreen::refreshMdnsList() {
@@ -112,6 +173,10 @@ void ConnectDCCScreen::resetMsgHandlers() {
     lv_msg_unsubscribe(connect_success);
     connect_success = nullptr;
   }
+  if (wifi_connected_sub) {
+    lv_msg_unsubscribe(wifi_connected_sub);
+    wifi_connected_sub = nullptr;
+  }
 }
 
 void ConnectDCCScreen::refreshSavedList() {
@@ -137,6 +202,7 @@ void ConnectDCCScreen::cleanUp() {
   btn_connect = nullptr;
   currentButton = nullptr;
   savedListItem = nullptr;
+  waitingScreen_.reset();
 }
 
 void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dccItem) {
@@ -145,16 +211,24 @@ void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dc
     return;
   }
 
-  ESP_LOGI(TAG, "Connecting to DCC server at %s:%d", dccItem->device().ip.c_str(), dccItem->device().port);
+  connectToDCCDevice(dccItem->device());
+}
 
-  auto dccDevice = dccItem->device();
+void ConnectDCCScreen::connectToDCCDevice(const utilities::WithrottleDevice &dccDevice) {
+  if (dccDevice.ip.empty() || dccDevice.port == 0) {
+    ESP_LOGW(TAG, "Invalid DCC device details, cannot connect");
+    return;
+  }
+
+  ESP_LOGI(TAG, "Connecting to DCC server at %s:%d", dccDevice.ip.c_str(), dccDevice.port);
+
   auto wifiHandler = utilities::WifiHandler::instance();
   auto wifiControl = utilities::WifiControl::instance();
 
-  auto waitingScreen = std::make_shared<WaitingScreen>();
-  waitingScreen->setLabel("Connecting to:");
-  waitingScreen->setSubLabel(dccItem->device().hostname);
-  waitingScreen->showScreen(shared_from_this());
+  waitingScreen_ = std::make_shared<WaitingScreen>();
+  waitingScreen_->setLabel("Connecting to:");
+  waitingScreen_->setSubLabel(dccDevice.hostname.empty() ? dccDevice.ip : dccDevice.hostname);
+  waitingScreen_->showScreen(shared_from_this());
 
   lv_msg_send(MSG_CONNECTING_TO_DCC_SERVER, NULL);
   wifiControl->startConnectToServer(dccDevice.ip.c_str(), dccDevice.port);
@@ -190,6 +264,7 @@ void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dc
           [](void *cbArg) {
             auto *args = static_cast<ConnectTaskArgs *>(cbArg);
             lv_msg_send(MSG_DCC_CONNECTION_SUCCESS, NULL);
+            args->self->waitingScreen_.reset();
             args->self->cleanUp();
             auto DCCMenuScreen = DCCMenu::instance();
             DCCMenuScreen->setConnectedServer(args->ip, args->port, args->instance);
@@ -202,8 +277,10 @@ void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dc
 
       lv_async_call(
           [](void *cbArg) {
+            auto *args = static_cast<ConnectTaskArgs *>(cbArg);
             lv_msg_send(MSG_DCC_CONNECTION_FAILED, NULL);
-            delete static_cast<ConnectTaskArgs *>(cbArg);
+            args->self->waitingScreen_.reset();
+            delete args;
           },
           args);
     }
@@ -235,12 +312,99 @@ void ConnectDCCScreen::button_save_callback(lv_event_t *e) {
       auto currentItem = getItem(currentButton);
       if (currentItem) {
         ESP_LOGI(TAG, "Save button pressed on %s", currentItem->getText().c_str());
-        // handle save action.
-        // auto savedListItem = std::make_shared<DCCConnectListItem>(list_saved, savedListItems.size(),
-        // dccItem->device()); savedListItems.push_back(savedListItem);
+        if (saveSelectedConnection()) {
+          display::showMessageBox("Saved", "Saved DCC connection.", display::MessageBoxState::Success, nullptr,
+                                  nullptr);
+        } else {
+          display::showMessageBox("Save Failed", "Unable to save DCC connection.", display::MessageBoxState::Error,
+                                  nullptr, nullptr);
+        }
       }
     }
   }
+}
+
+bool ConnectDCCScreen::saveSelectedConnection() {
+  if (!currentButton) {
+    ESP_LOGW(TAG, "No selected DCC item to save");
+    return false;
+  }
+
+  auto currentItem = getItem(currentButton);
+  if (!currentItem) {
+    ESP_LOGW(TAG, "Selected DCC item not found");
+    return false;
+  }
+
+  const auto &device = currentItem->device();
+  if (device.ip.empty() || device.port == 0) {
+    ESP_LOGW(TAG, "Selected DCC item missing ip/port");
+    return false;
+  }
+
+  esp_err_t err = ESP_OK;
+  std::unique_ptr<nvs::NVSHandle> handle = nvs::open_nvs_handle(NVS_NAMESPACE_DCC, NVS_READWRITE, &err);
+  if (err != ESP_OK || !handle) {
+    ESP_LOGE(TAG, "nvs_open for DCC save failed: %s", esp_err_to_name(err));
+    return false;
+  }
+
+  err = handle->set_item(NVS_DCC_SAVED, static_cast<uint8_t>(1));
+  if (err == ESP_OK)
+    err = handle->set_string(NVS_DCC_INSTANCE, device.instance.c_str());
+  if (err == ESP_OK)
+    err = handle->set_string(NVS_DCC_HOSTNAME, device.hostname.c_str());
+  if (err == ESP_OK)
+    err = handle->set_string(NVS_DCC_IP, device.ip.c_str());
+  if (err == ESP_OK)
+    err = handle->set_item(NVS_DCC_PORT, device.port);
+  if (err == ESP_OK)
+    err = handle->commit();
+
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to save DCC connection: %s", esp_err_to_name(err));
+    return false;
+  }
+
+  savedListItem = currentItem;
+  ESP_LOGI(TAG, "Saved DCC connection %s:%d", device.ip.c_str(), device.port);
+  return true;
+}
+
+bool ConnectDCCScreen::maybeAutoConnectSaved() {
+  if (isCleanedUp || autoConnectAttempted) {
+    return false;
+  }
+
+  if (isBootAutoConnectHandled()) {
+    return false;
+  }
+
+  if (!utilities::WifiHandler::instance()->isConnected()) {
+    ESP_LOGI(TAG, "Skipping DCC auto-connect: WiFi is not connected");
+    return false;
+  }
+
+  // Auto-connect is boot-only. Once WiFi is up and we evaluate this path, consume the boot attempt.
+  markBootAutoConnectHandled();
+
+  utilities::WithrottleDevice savedDevice;
+  if (!loadSavedConnection(savedDevice)) {
+    return false;
+  }
+
+  auto wifiControl = utilities::WifiControl::instance();
+  if (wifiControl->connectionState() == utilities::WifiControl::CONNECTING ||
+      wifiControl->connectionState() == utilities::WifiControl::CONNECTED) {
+    ESP_LOGI(TAG, "Skipping DCC auto-connect: DCC already connecting/connected");
+    autoConnectAttempted = true;
+    return false;
+  }
+
+  ESP_LOGI(TAG, "Auto-connecting to saved DCC server %s:%d", savedDevice.ip.c_str(), savedDevice.port);
+  autoConnectAttempted = true;
+  connectToDCCDevice(savedDevice);
+  return true;
 }
 
 void ConnectDCCScreen::button_back_callback(lv_event_t *e) {

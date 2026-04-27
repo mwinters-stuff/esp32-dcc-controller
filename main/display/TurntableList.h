@@ -32,10 +32,22 @@ public:
   void moveToIndex(std::shared_ptr<TurntableIndexListItem> index);
 
 private:
+  void setTurntableIndexCheckedState(int turntableId, int indexId, bool checked);
+  void setExclusiveTurntableIndexChecked(int turntableId, int indexId);
+  void startTurntableFlashing(int turntableId, int indexId);
+  void stopTurntableFlashing(bool keepHighlighted);
+  void onFlashTimerTick();
+  bool isTurntableMoving(int turntableId) const;
+
   std::vector<std::shared_ptr<IListItem>> listItems;
   std::shared_ptr<TurntableListItem> getItemByTurntableId(int TurntableId);
+  std::shared_ptr<TurntableIndexListItem> getIndexItemByTurntableAndIndex(int turntableId, int indexId);
 
-  // void *Turntable_changed_sub = nullptr;
+  lv_msg_sub_dsc_t *turntable_changed_sub = nullptr;
+  lv_timer_t *turntable_flash_timer = nullptr;
+  int flashingTurntableId = -1;
+  int flashingIndexId = -1;
+  bool flashCheckedState = false;
 
   bool isCleanedUp = false;
   lv_obj_t *lbl_title = nullptr;
@@ -56,6 +68,12 @@ protected:
     auto *self = static_cast<TurntableListScreen *>(lv_event_get_user_data(e));
     if (self)
       self->button_listitem_click_event_callback(e);
+  }
+
+  static void flash_timer_trampoline(lv_timer_t *timer) {
+    auto *self = static_cast<TurntableListScreen *>(lv_timer_get_user_data(timer));
+    if (self)
+      self->onFlashTimerTick();
   }
 };
 } // namespace display
