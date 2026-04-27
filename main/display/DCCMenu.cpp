@@ -4,6 +4,7 @@
 #include "FirstScreen.h"
 #include "LvglWrapper.h"
 #include "RosterList.h"
+#include "RouteList.h"
 #include "TurnoutList.h"
 #include "TurntableList.h"
 #include "connection/wifi_control.h"
@@ -258,6 +259,9 @@ void DCCMenu::button_routes_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI(TAG, "Routes button clicked!");
     cleanUp();
+
+    auto routeListScreen = RouteListScreen::instance();
+    routeListScreen->showScreen(shared_from_this());
   }
 }
 
