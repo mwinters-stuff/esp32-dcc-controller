@@ -2,6 +2,7 @@
 #include "LvglWrapper.h"
 #include "connection/wifi_control.h"
 #include "utilities/RotaryEncoder.h"
+#include <cstdio>
 #include <esp_log.h>
 
 namespace display {
@@ -22,18 +23,25 @@ static void apply_focus_outline(lv_obj_t *obj, bool focused) {
 void RouteListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   (void)parent;
   isCleanedUp = false;
+  routesPaused = false;
   selectedRouteId = -1;
   listItems.clear();
 
   lbl_title = makeLabel(lvObj_, "Routes", LV_ALIGN_TOP_MID, 0, 8, "label.title", &lv_font_montserrat_30);
 
-  list_routes = makeListView(lvObj_, 0, 40, 320, 380);
+  list_routes = makeListView(lvObj_, 0, 40, 320, 340);
   lv_obj_add_event_cb(list_routes, event_listitem_click_trampoline, LV_EVENT_CLICKED, this);
+
+  lbl_status = makeLabel(lvObj_, "Select a route", LV_ALIGN_BOTTOM_MID, 0, -58, "label.main");
 
   btn_back = makeButton(lvObj_, "Back", 100, 40, LV_ALIGN_BOTTOM_LEFT, 8, -12, "button.secondary");
   lv_obj_add_event_cb(btn_back, &RouteListScreen::event_back_trampoline, LV_EVENT_CLICKED, this);
 
+  btn_pause_resume = makeButton(lvObj_, "Pause", 120, 40, LV_ALIGN_BOTTOM_RIGHT, -8, -12, "button.secondary");
+  lv_obj_add_event_cb(btn_pause_resume, &RouteListScreen::event_pause_resume_trampoline, LV_EVENT_CLICKED, this);
+
   refreshList();
+  updatePauseResumeButton();
 
   utilities::RotaryEncoder::instance()->setCallbacks(&RouteListScreen::rotary_rotate_trampoline,
                                                      &RouteListScreen::rotary_click_trampoline,
@@ -77,10 +85,13 @@ void RouteListScreen::cleanUp() {
   unsubscribeAll();
   listItems.clear();
   lbl_title = nullptr;
+  lbl_status = nullptr;
   list_routes = nullptr;
   btn_back = nullptr;
+  btn_pause_resume = nullptr;
   focusedIndex = -1;
   selectedRouteId = -1;
+  routesPaused = false;
   pendingRotateSteps.store(0, std::memory_order_relaxed);
   utilities::RotaryEncoder::instance()->clearCallbacks(this);
   lv_obj_clean(lvObj_);
@@ -94,6 +105,31 @@ void RouteListScreen::button_back_callback(lv_event_t *e) {
       cleanUp();
       screen->showScreen();
     }
+  }
+}
+
+void RouteListScreen::button_pause_resume_callback(lv_event_t *e) {
+  if (isCleanedUp)
+    return;
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    auto wifiControl = utilities::WifiControl::instance();
+    auto dccProtocol = wifiControl->dccProtocol();
+    if (dccProtocol == nullptr) {
+      ESP_LOGW(TAG, "DCC Protocol is null, cannot toggle route pause state");
+      setStatusText("DCC not connected");
+      return;
+    }
+
+    if (routesPaused) {
+      dccProtocol->resumeRoutes();
+      routesPaused = false;
+      setStatusText("Routes resumed");
+    } else {
+      dccProtocol->pauseRoutes();
+      routesPaused = true;
+      setStatusText("Routes paused");
+    }
+    updatePauseResumeButton();
   }
 }
 
@@ -177,12 +213,19 @@ void RouteListScreen::startRoute(std::shared_ptr<RouteListItem> item) {
   auto dccProtocol = wifiControl->dccProtocol();
   if (dccProtocol == nullptr) {
     ESP_LOGW(TAG, "DCC Protocol is null, cannot start route");
+    setStatusText("DCC not connected");
     return;
   }
 
   dccProtocol->startRoute(item->getRouteId());
+  routesPaused = false;
+  updatePauseResumeButton();
   selectedRouteId = item->getRouteId();
   updateSelectedState();
+
+  char status[64];
+  std::snprintf(status, sizeof(status), "Started: %s", item->getDisplayName().c_str());
+  setStatusText(status);
 }
 
 void RouteListScreen::activateFocused() {
@@ -264,6 +307,19 @@ void RouteListScreen::rotary_process_trampoline(void *userData) {
   auto *self = static_cast<RouteListScreen *>(userData);
   if (self && !self->isCleanedUp) {
     self->processPendingRotate();
+  }
+}
+
+void RouteListScreen::updatePauseResumeButton() {
+  if (!btn_pause_resume) {
+    return;
+  }
+  lv_label_set_text(lv_obj_get_child(btn_pause_resume, 0), routesPaused ? "Resume" : "Pause");
+}
+
+void RouteListScreen::setStatusText(const char *text) {
+  if (lbl_status) {
+    lv_label_set_text(lbl_status, text ? text : "");
   }
 }
 
