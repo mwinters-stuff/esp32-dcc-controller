@@ -1,3 +1,11 @@
+/**
+ * @file WifiListScreen.cpp
+ * @brief Screen that scans for nearby WiFi networks and lets the user pick one.
+ *
+ * On entry, stops any running mDNS search and kicks off a background scan task.
+ * When the scan completes the list is populated and the user can select an
+ * access point and tap Connect to proceed to WifiConnectScreen.
+ */
 #include "WifiListScreen.h"
 #include "LvglWrapper.h"
 #include "WifiConnectScreen.h"
@@ -13,6 +21,7 @@ namespace display {
 
 static const char *TAG = "WIFI_LIST_SCREEN";
 
+// Builds the WiFi scan UI, stops mDNS and starts the background scan task.
 void WifiListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   utilities::WifiHandler::instance()->stopMdnsSearchLoop();
   isCleanedUp = false;
@@ -58,6 +67,7 @@ void WifiListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) 
       &scanTaskHandle);
 }
 
+// Releases widget pointers and aborts any running scan task.
 void WifiListScreen::cleanUp() {
   ESP_LOGI(TAG, "WifiListScreen cleaned up");
   isCleanedUp = true;
@@ -74,6 +84,8 @@ void WifiListScreen::cleanUp() {
   lv_obj_clean(lvObj_);
 }
 
+// FreeRTOS task body: runs the esp_wifi scan, then uses lv_async_call to
+// populate the list on the LVGL thread.
 void WifiListScreen::scanWifiTask() {
   ESP_LOGI(TAG, "Starting background Wi-Fi scan...");
   ESP_ERROR_CHECK(esp_wifi_start());
@@ -130,6 +142,7 @@ void WifiListScreen::scanWifiTask() {
   ESP_ERROR_CHECK(esp_wifi_scan_stop());
 }
 
+// Populates the list widget with the scan results.
 void WifiListScreen::populateList(const std::vector<wifi_ap_record_t> &records) {
   for (const auto &ap : records) {
     std::string ssid_str(reinterpret_cast<const char *>(ap.ssid),
@@ -145,6 +158,7 @@ void WifiListScreen::populateList(const std::vector<wifi_ap_record_t> &records) 
   ESP_LOGI(TAG, "Wi-Fi scan complete, list populated with %u entries", (unsigned)records.size());
 }
 
+// Disables the Connect and Back buttons (used during scan).
 void WifiListScreen::disableButtons() {
   if (isCleanedUp)
     return;
@@ -153,6 +167,7 @@ void WifiListScreen::disableButtons() {
   lv_obj_add_state(btn_back, LV_STATE_DISABLED);
 }
 
+// Re-enables the Connect and Back buttons after the scan completes.
 void WifiListScreen::enableButtons() {
   if (isCleanedUp)
     return;
@@ -160,6 +175,7 @@ void WifiListScreen::enableButtons() {
   lv_obj_clear_state(btn_back, LV_STATE_DISABLED);
 }
 
+// Validates that a network is selected and opens WifiConnectScreen.
 void WifiListScreen::button_connect_event_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -176,6 +192,7 @@ void WifiListScreen::button_connect_event_callback(lv_event_t *e) {
   }
 }
 
+// Returns the currently checked WifiListItem, or nullptr if none selected.
 std::shared_ptr<WifiListItem> WifiListScreen::getCurrentCheckedItem(lv_obj_t *bn) {
   for (const auto &item : items) {
     if (item->getLvObj() == bn) {
@@ -185,6 +202,7 @@ std::shared_ptr<WifiListItem> WifiListScreen::getCurrentCheckedItem(lv_obj_t *bn
   return nullptr;
 }
 
+// Returns to the previous screen.
 void WifiListScreen::button_back_event_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -197,6 +215,7 @@ void WifiListScreen::button_back_event_callback(lv_event_t *e) {
   }
 }
 
+// Handles taps on list items: checks the tapped entry and unchecks others.
 void WifiListScreen::button_listitem_click_event_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;

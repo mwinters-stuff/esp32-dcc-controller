@@ -1,3 +1,12 @@
+/**
+ * @file RotaryEncoder.cpp
+ * @brief Quadrature rotary encoder driver with push-button support.
+ *
+ * Uses GPIO interrupts and a quadrature transition table to decode rotation
+ * direction and count. Button events (single click, long press) are handled
+ * by the esp-idf `iot_button` component. All callbacks are invoked from a
+ * dedicated FreeRTOS monitor task so callers receive events on a known stack.
+ */
 #include "RotaryEncoder.h"
 
 #include <button_gpio.h>
@@ -14,10 +23,14 @@ namespace utilities {
 
 static const char *TAG = "RotaryEncoder";
 
+// iot_button press-down raw callback; logs the event for diagnostics.
 static void sw_press_down_cb(void *button_handle, void *usr_data) { ESP_LOGI(TAG, "SW_PRESS_DOWN"); }
 
+// iot_button press-up raw callback; logs the event for diagnostics.
 static void sw_press_up_cb(void *button_handle, void *usr_data) { ESP_LOGI(TAG, "SW_PRESS_UP"); }
 
+// iot_button single-click trampoline: casts usr_data to RotaryEncoder and
+// calls emitClick().
 void RotaryEncoder::sw_single_click_trampoline(void *button_handle, void *usr_data) {
   ESP_LOGI(TAG, "SW_SINGLE_CLICK");
   auto *self = static_cast<RotaryEncoder *>(usr_data);
@@ -26,6 +39,8 @@ void RotaryEncoder::sw_single_click_trampoline(void *button_handle, void *usr_da
   }
 }
 
+// iot_button long-press trampoline: casts usr_data to RotaryEncoder and calls
+// emitLongPress().
 void RotaryEncoder::sw_long_press_trampoline(void *button_handle, void *usr_data) {
   ESP_LOGI(TAG, "SW_LONG_PRESS_START");
   auto *self = static_cast<RotaryEncoder *>(usr_data);
@@ -34,6 +49,8 @@ void RotaryEncoder::sw_long_press_trampoline(void *button_handle, void *usr_data
   }
 }
 
+// GPIO ISR handler: reads the A/B pin states, looks up the quadrature delta
+// and increments the encoder's pending count. Placed in IRAM for low latency.
 void IRAM_ATTR RotaryEncoder::encoder_isr_handler(void *arg) {
   auto *self = static_cast<RotaryEncoder *>(arg);
   const uint8_t a = static_cast<uint8_t>(gpio_get_level(self->gpioA_));
@@ -55,6 +72,8 @@ void IRAM_ATTR RotaryEncoder::encoder_isr_handler(void *arg) {
   self->prevState_ = currentState;
 }
 
+// FreeRTOS task that wakes on a notification from encoder_isr_handler and
+// calls emitRotate() with the accumulated delta.
 void RotaryEncoder::monitor_task_trampoline(void *arg) {
   auto *self = static_cast<RotaryEncoder *>(arg);
   int32_t lastCount = 0;
@@ -93,6 +112,8 @@ void RotaryEncoder::monitor_task_trampoline(void *arg) {
   }
 }
 
+// Registers rotate, click, long-press and optional process callbacks for the
+// given userData context. Replaces any previously registered set.
 void RotaryEncoder::setCallbacks(RotateCallback rotateCb, ClickCallback clickCb, LongPressCallback longPressCb,
                                  void *userData) {
   portENTER_CRITICAL(&callbackMux_);
@@ -103,6 +124,8 @@ void RotaryEncoder::setCallbacks(RotateCallback rotateCb, ClickCallback clickCb,
   portEXIT_CRITICAL(&callbackMux_);
 }
 
+// Removes all callbacks registered under userData. Called by screens during
+// cleanUp so stale pointers are not invoked after the screen is destroyed.
 void RotaryEncoder::clearCallbacks(void *userData) {
   portENTER_CRITICAL(&callbackMux_);
   if (userData == nullptr || callbackUserData_ == userData) {
@@ -114,6 +137,8 @@ void RotaryEncoder::clearCallbacks(void *userData) {
   portEXIT_CRITICAL(&callbackMux_);
 }
 
+// Sets the global activity callback invoked on any encoder event (rotation or
+// button). Used by the display-sleep subsystem to wake the screen.
 void RotaryEncoder::setActivityCallback(ActivityCallback cb, void *userData) {
   portENTER_CRITICAL(&callbackMux_);
   activityCallback_ = cb;
@@ -121,6 +146,8 @@ void RotaryEncoder::setActivityCallback(ActivityCallback cb, void *userData) {
   portEXIT_CRITICAL(&callbackMux_);
 }
 
+// Dispatches a rotation event with the given delta to all registered rotate
+// callbacks, then fires the activity callback.
 void RotaryEncoder::emitRotate(int32_t delta) {
   RotateCallback rotateCb = nullptr;
   void *userData = nullptr;
@@ -142,6 +169,8 @@ void RotaryEncoder::emitRotate(int32_t delta) {
   }
 }
 
+// Dispatches a click event to all registered click callbacks, then fires the
+// activity callback.
 void RotaryEncoder::emitClick() {
   ClickCallback clickCb = nullptr;
   void *userData = nullptr;
@@ -163,6 +192,8 @@ void RotaryEncoder::emitClick() {
   }
 }
 
+// Dispatches a long-press event to all registered long-press callbacks, then
+// fires the activity callback.
 void RotaryEncoder::emitLongPress() {
   LongPressCallback longPressCb = nullptr;
   void *userData = nullptr;
@@ -184,8 +215,11 @@ void RotaryEncoder::emitLongPress() {
   }
 }
 
+// Destructor: calls deinit() to free GPIO/ISR/task resources.
 RotaryEncoder::~RotaryEncoder() { deinit(); }
 
+// Configures GPIOs for encoder A/B (and optionally the switch), installs the
+// ISR, creates the monitor task and registers iot_button callbacks.
 bool RotaryEncoder::init(gpio_num_t gpioA, gpio_num_t gpioB, bool reverseDirection, bool enableSwitch,
                          gpio_num_t gpioSw, uint8_t switchActiveLevel) {
   if (initialized_) {
@@ -294,6 +328,7 @@ bool RotaryEncoder::init(gpio_num_t gpioA, gpio_num_t gpioB, bool reverseDirecti
   return true;
 }
 
+// Removes the ISR, deletes the monitor task and releases button handles.
 void RotaryEncoder::deinit() {
   if (!initialized_) {
     return;

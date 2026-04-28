@@ -1,3 +1,11 @@
+/**
+ * @file ConnectDCC.cpp
+ * @brief Screen for discovering and connecting to a DCC-EX server via mDNS.
+ *
+ * Lists WiThrottle-compatible servers found on the local network. Supports
+ * saving a preferred server to NVS and auto-connecting to it on boot. Once a
+ * connection is established the screen transitions to DCCMenu.
+ */
 #include "ConnectDCC.h"
 #include "DCCMenu.h"
 #include "FirstScreen.h"
@@ -17,10 +25,14 @@ namespace display {
 static const char *TAG = "DCC_CONNECT_SCREEN";
 bool ConnectDCCScreen::bootAutoConnectHandled = false;
 
+// Returns true if the one-shot boot auto-connect attempt has already been made.
 bool ConnectDCCScreen::isBootAutoConnectHandled() { return bootAutoConnectHandled; }
 
+// Marks the boot auto-connect attempt as consumed so it is not retried.
 void ConnectDCCScreen::markBootAutoConnectHandled() { bootAutoConnectHandled = true; }
 
+// Builds the UI, starts (or resumes) mDNS discovery and, on first boot,
+// attempts an auto-connect to the previously saved server.
 void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
   autoConnectAttempted = false;
@@ -37,7 +49,6 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
   // List for Auto Detect
   list_auto = makeListView(lvObj_, 0, 40, 320, 380);
   lv_obj_add_event_cb(list_auto, event_listitem_click_trampoline, LV_EVENT_CLICKED, this);
-
 
   // Bottom Buttons
   btn_back = makeButton(lvObj_, "Back", 100, 40, LV_ALIGN_BOTTOM_LEFT, 8, -12, "button.secondary");
@@ -76,14 +87,30 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
         ConnectDCCScreen *self = static_cast<ConnectDCCScreen *>(lv_msg_get_user_data(msg));
         if (!self || self->isCleanedUp)
           return;
-        self->maybeAutoConnectSaved();
+        const bool autoStarted = self->maybeAutoConnectSaved();
+        if (!autoStarted) {
+          auto wifiHandler = utilities::WifiHandler::instance();
+          if (wifiHandler->isConnected()) {
+            wifiHandler->startMdnsSearchLoop();
+          }
+        }
       },
       this);
 
   refreshMdnsList();
-  maybeAutoConnectSaved();
+  const bool autoStarted = maybeAutoConnectSaved();
+  if (!autoStarted) {
+    auto wifiHandler = utilities::WifiHandler::instance();
+    if (wifiHandler->isConnected()) {
+      wifiHandler->startMdnsSearchLoop();
+    } else {
+      ESP_LOGW(TAG, "WiFi is not connected; skipping mDNS search loop start");
+    }
+  }
 }
 
+// Reads the saved DCC server details from NVS into outDevice.
+// Returns false if no valid entry has been saved.
 bool ConnectDCCScreen::loadSavedConnection(utilities::WithrottleDevice &outDevice) {
   esp_err_t err = ESP_OK;
   std::unique_ptr<nvs::NVSHandle> handle = nvs::open_nvs_handle(NVS_NAMESPACE_DCC, NVS_READONLY, &err);
@@ -125,6 +152,9 @@ bool ConnectDCCScreen::loadSavedConnection(utilities::WithrottleDevice &outDevic
   return true;
 }
 
+// Synchronises the on-screen list with the current set of discovered devices.
+// Always prepends the saved entry (if any) so it is always visible even before
+// mDNS finds it. Existing items are updated in place; new ones are appended.
 void ConnectDCCScreen::refreshMdnsList() {
   if (isCleanedUp)
     return;
@@ -135,6 +165,14 @@ void ConnectDCCScreen::refreshMdnsList() {
 
   auto wifiHandler = utilities::WifiHandler::instance();
   auto devices = wifiHandler->getWithrottleDevices();
+
+  // Always include the saved DCC entry in this list. If mDNS later discovers the
+  // same endpoint, DCCConnectListItem::matches() prevents duplicates.
+  utilities::WithrottleDevice savedDevice;
+  if (loadSavedConnection(savedDevice)) {
+    devices.insert(devices.begin(), savedDevice);
+  }
+
   ESP_LOGI(TAG, "Refreshing mDNS list, found %d devices", devices.size());
 
   for (const auto &device : devices) {
@@ -144,12 +182,10 @@ void ConnectDCCScreen::refreshMdnsList() {
     for (auto &item : detectedListItems) {
       if (isCleanedUp)
         return;
-      if (item->matches(device)) // Assume DCCConnectListItem has a matches() method for identity
-      {
+      if (item->matches(device)) {
         found = true;
-        if (!item->isSame(device)) // Assume isSame() checks if details differ
-        {
-          item->update(device); // Update the item with new device info
+        if (!item->isSame(device)) {
+          item->update(device);
           ESP_LOGI(TAG, "Updated device: %s", device.instance.c_str());
         }
         break;
@@ -157,12 +193,15 @@ void ConnectDCCScreen::refreshMdnsList() {
     }
     if (!found) {
       ESP_LOGI(TAG, "Adding new device: %s", device.instance.c_str());
-      auto listItem = std::make_shared<DCCConnectListItem>(list_auto, detectedListItems.size(), device);
+      const bool isSaved = !savedDevice.ip.empty() && savedDevice.ip == device.ip && savedDevice.port == device.port;
+      auto listItem = std::make_shared<DCCConnectListItem>(list_auto, detectedListItems.size(), device, isSaved);
       detectedListItems.push_back(listItem);
     }
   }
 }
 
+// Unsubscribes all lv_msg subscriptions created during show(). Called when
+// navigating away or before starting a connection attempt.
 void ConnectDCCScreen::resetMsgHandlers() {
   if (mdns_added_sub) {
     lv_msg_unsubscribe(mdns_added_sub);
@@ -182,6 +221,8 @@ void ConnectDCCScreen::resetMsgHandlers() {
   }
 }
 
+// Tears down the screen: unsubscribes messages, clears widget pointers and
+// releases the waiting-screen handle.
 void ConnectDCCScreen::cleanUp() {
   ESP_LOGI(TAG, "Cleaning up ConnectDCCScreen");
   isCleanedUp = true;
@@ -200,6 +241,8 @@ void ConnectDCCScreen::cleanUp() {
   waitingScreen_.reset();
 }
 
+// Convenience overload: extracts the WithrottleDevice from a list item and
+// delegates to connectToDCCDevice.
 void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dccItem) {
   if (!dccItem) {
     ESP_LOGW(TAG, "No DCC item selected for connection");
@@ -209,6 +252,9 @@ void ConnectDCCScreen::connectToDCCServer(std::shared_ptr<DCCConnectListItem> dc
   connectToDCCDevice(dccItem->device());
 }
 
+// Stops mDNS updates, shows the waiting screen and spawns a FreeRTOS task that
+// waits for the TCP connection to resolve. On success it transitions to DCCMenu;
+// on failure it fires MSG_DCC_CONNECTION_FAILED and dismisses the waiting screen.
 void ConnectDCCScreen::connectToDCCDevice(const utilities::WithrottleDevice &dccDevice) {
   if (dccDevice.ip.empty() || dccDevice.port == 0) {
     ESP_LOGW(TAG, "Invalid DCC device details, cannot connect");
@@ -288,6 +334,7 @@ void ConnectDCCScreen::connectToDCCDevice(const utilities::WithrottleDevice &dcc
   xTaskCreate(connect_wait_task, "connect_wait_task", 4096, args, tskIDLE_PRIORITY, nullptr);
 }
 
+// Initiates a connection to the currently selected list item.
 void ConnectDCCScreen::button_connect_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -302,6 +349,7 @@ void ConnectDCCScreen::button_connect_callback(lv_event_t *e) {
   }
 }
 
+// Persists the selected server to NVS and shows a confirmation message box.
 void ConnectDCCScreen::button_save_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -322,6 +370,8 @@ void ConnectDCCScreen::button_save_callback(lv_event_t *e) {
   }
 }
 
+// Writes the selected device's IP, port, instance and hostname to NVS.
+// Returns true on success.
 bool ConnectDCCScreen::saveSelectedConnection() {
   if (!currentButton) {
     ESP_LOGW(TAG, "No selected DCC item to save");
@@ -369,6 +419,9 @@ bool ConnectDCCScreen::saveSelectedConnection() {
   return true;
 }
 
+// Performs the one-shot boot auto-connect: if WiFi is up, no connection is
+// already in progress and a saved server exists, connects immediately.
+// Returns true if a connection attempt was started.
 bool ConnectDCCScreen::maybeAutoConnectSaved() {
   if (isCleanedUp || autoConnectAttempted) {
     return false;
@@ -405,6 +458,7 @@ bool ConnectDCCScreen::maybeAutoConnectSaved() {
   return true;
 }
 
+// Returns to the parent screen (typically FirstScreen).
 void ConnectDCCScreen::button_back_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -416,6 +470,8 @@ void ConnectDCCScreen::button_back_callback(lv_event_t *e) {
   }
 }
 
+// Handles taps on individual list entries: toggles the checked state and
+// enables or disables the Connect button accordingly.
 void ConnectDCCScreen::button_listitem_click_event_callback(lv_event_t *e) {
   if (isCleanedUp || !btn_connect)
     return;
@@ -458,6 +514,7 @@ void ConnectDCCScreen::button_listitem_click_event_callback(lv_event_t *e) {
   }
 }
 
+// Returns the DCCConnectListItem whose LVGL button matches bn, or nullptr.
 std::shared_ptr<DCCConnectListItem> ConnectDCCScreen::getItem(lv_obj_t *bn) {
   for (const auto &item : detectedListItems) {
     if (item->getLvObj() == bn) {

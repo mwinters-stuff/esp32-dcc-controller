@@ -1,3 +1,11 @@
+/**
+ * @file TurntableList.cpp
+ * @brief Screen displaying turntables and their indexed positions.
+ *
+ * Each turntable entry expands to show its named index positions. Tapping or
+ * confirming with the rotary encoder sends a move-to-index command. Supports
+ * rotary-encoder focus navigation.
+ */
 #include "TurntableList.h"
 #include "DCCMenu.h"
 #include "FirstScreen.h"
@@ -16,6 +24,7 @@ namespace display {
 
 static const char *TAG = "Turntable_LIST_SCREEN";
 
+// Draws or clears the focus outline on a turntable list item.
 static void apply_focus_outline(lv_obj_t *obj, bool focused) {
   if (!obj) {
     return;
@@ -27,6 +36,8 @@ static void apply_focus_outline(lv_obj_t *obj, bool focused) {
   lv_obj_set_style_border_side(obj, focused ? LV_BORDER_SIDE_FULL : LV_BORDER_SIDE_NONE, LV_PART_MAIN);
 }
 
+// Builds the turntable list UI, registers rotary callbacks and subscribes to
+// turntable updated / move messages.
 void TurntableListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
 
@@ -74,6 +85,7 @@ void TurntableListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScr
                                                      &TurntableListScreen::rotary_long_press_trampoline, this);
 }
 
+// Clears and repopulates the list widget from the latest turntable data.
 void TurntableListScreen::refreshList() {
   ESP_LOGI(TAG, "Refreshing Turntable list");
   auto wifiControl = utilities::WifiControl::instance();
@@ -117,6 +129,7 @@ void TurntableListScreen::refreshList() {
   updateFocusedState();
 }
 
+// Removes turntable-related lv_msg subscriptions.
 void TurntableListScreen::unsubscribeAll() {
   if (turntable_changed_sub) {
     lv_msg_unsubscribe(turntable_changed_sub);
@@ -124,6 +137,7 @@ void TurntableListScreen::unsubscribeAll() {
   }
 }
 
+// Releases widget pointers, unregisters rotary callbacks and clears item lists.
 void TurntableListScreen::cleanUp() {
   ESP_LOGI(TAG, "Cleaning up TurntableListScreen");
   isCleanedUp = true;
@@ -140,6 +154,7 @@ void TurntableListScreen::cleanUp() {
   lv_obj_clean(lvObj_);
 }
 
+// Returns to the previous screen.
 void TurntableListScreen::button_back_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -151,6 +166,7 @@ void TurntableListScreen::button_back_callback(lv_event_t *e) {
   }
 }
 
+// Handles touch taps on list items: activates the tapped entry.
 void TurntableListScreen::button_listitem_click_event_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -175,6 +191,7 @@ void TurntableListScreen::button_listitem_click_event_callback(lv_event_t *e) {
   }
 }
 
+// Sends a move-to-index command for the given item to the DCC server.
 void TurntableListScreen::activateItem(lv_obj_t *target) {
   auto item = getItem(target);
   auto index = std::dynamic_pointer_cast<TurntableIndexListItem>(item);
@@ -209,6 +226,7 @@ void TurntableListScreen::activateItem(lv_obj_t *target) {
   }
 }
 
+// Refreshes focus outlines across all list items.
 void TurntableListScreen::updateFocusedState() {
   for (size_t i = 0; i < listItems.size(); ++i) {
     auto obj = listItems[i]->getLvObj();
@@ -226,6 +244,7 @@ void TurntableListScreen::updateFocusedState() {
   }
 }
 
+// Moves the rotary focus by `direction` steps (+1 down, -1 up).
 void TurntableListScreen::moveFocus(int direction) {
   if (isCleanedUp || listItems.empty() || direction == 0) {
     return;
@@ -253,6 +272,7 @@ void TurntableListScreen::moveFocus(int direction) {
   }
 }
 
+// Triggers the action for the currently focused item.
 void TurntableListScreen::activateFocused() {
   if (isCleanedUp || focusedIndex < 0 || focusedIndex >= static_cast<int>(listItems.size())) {
     return;
@@ -264,6 +284,7 @@ void TurntableListScreen::activateFocused() {
   }
 }
 
+// Returns to the previous screen via the standard back path.
 void TurntableListScreen::goBack() {
   if (isCleanedUp) {
     return;
@@ -274,6 +295,7 @@ void TurntableListScreen::goBack() {
   }
 }
 
+// Drains the pending rotation count and moves focus accordingly.
 void TurntableListScreen::processPendingRotate() {
   int32_t steps = pendingRotateSteps.exchange(0, std::memory_order_relaxed);
   while (steps > 0) {
@@ -286,6 +308,7 @@ void TurntableListScreen::processPendingRotate() {
   }
 }
 
+// Rotary encoder rotate ISR trampoline: accumulates delta into pendingRotate.
 void TurntableListScreen::rotary_rotate_trampoline(int32_t delta, void *userData) {
   auto *self = static_cast<TurntableListScreen *>(userData);
   if (!self || self->isCleanedUp) {
@@ -296,6 +319,7 @@ void TurntableListScreen::rotary_rotate_trampoline(int32_t delta, void *userData
   lv_async_call(&TurntableListScreen::rotary_process_trampoline, self);
 }
 
+// Rotary encoder click trampoline: activates the focused turntable index.
 void TurntableListScreen::rotary_click_trampoline(void *userData) {
   auto *self = static_cast<TurntableListScreen *>(userData);
   if (!self || self->isCleanedUp) {
@@ -312,6 +336,7 @@ void TurntableListScreen::rotary_click_trampoline(void *userData) {
       self);
 }
 
+// Rotary encoder long-press trampoline: navigates back.
 void TurntableListScreen::rotary_long_press_trampoline(void *userData) {
   auto *self = static_cast<TurntableListScreen *>(userData);
   if (!self || self->isCleanedUp) {
@@ -328,6 +353,7 @@ void TurntableListScreen::rotary_long_press_trampoline(void *userData) {
       self);
 }
 
+// LVGL async trampoline that flushes pending rotate events on the LVGL thread.
 void TurntableListScreen::rotary_process_trampoline(void *userData) {
   auto *self = static_cast<TurntableListScreen *>(userData);
   if (self && !self->isCleanedUp) {
@@ -335,6 +361,7 @@ void TurntableListScreen::rotary_process_trampoline(void *userData) {
   }
 }
 
+// Sends a move-to-index command for the given index item to the DCC server.
 void TurntableListScreen::moveToIndex(std::shared_ptr<TurntableIndexListItem> index) {
   ESP_LOGI(TAG, "Moving to Turntable ID %d Index ID %d", index->getTurntableId(), index->getId());
   auto wifiControl = utilities::WifiControl::instance();
@@ -356,6 +383,7 @@ void TurntableListScreen::moveToIndex(std::shared_ptr<TurntableIndexListItem> in
   }
 }
 
+// Returns the list item (turntable or index) whose LVGL button matches bn.
 std::shared_ptr<IListItem> TurntableListScreen::getItem(lv_obj_t *bn) {
   for (const auto &item : listItems) {
     if (item->getLvObj() == bn) {
@@ -365,6 +393,7 @@ std::shared_ptr<IListItem> TurntableListScreen::getItem(lv_obj_t *bn) {
   return nullptr;
 }
 
+// Returns the TurntableListItem matching the given DCC turntable ID, or nullptr.
 std::shared_ptr<TurntableListItem> TurntableListScreen::getItemByTurntableId(int TurntableId) {
   for (const auto &item : listItems) {
     auto turnTableItem = std::dynamic_pointer_cast<TurntableListItem>(item);
@@ -375,6 +404,7 @@ std::shared_ptr<TurntableListItem> TurntableListScreen::getItemByTurntableId(int
   return nullptr;
 }
 
+// Returns the index item matching the given turntable ID and index number.
 std::shared_ptr<TurntableIndexListItem> TurntableListScreen::getIndexItemByTurntableAndIndex(int turntableId,
                                                                                              int indexId) {
   for (const auto &item : listItems) {

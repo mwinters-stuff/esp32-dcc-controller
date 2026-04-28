@@ -1,3 +1,11 @@
+/**
+ * @file RosterList.cpp
+ * @brief Screen displaying the locomotive roster received from the DCC-EX server.
+ *
+ * Subscribes to MSG_ROSTER_UPDATED to keep the list in sync. Tapping a
+ * locomotive opens DCCMenu for that engine. Supports rotary-encoder navigation
+ * via the shared focus and selection helpers.
+ */
 #include "RosterList.h"
 #include "DCCMenu.h"
 #include "FirstScreen.h"
@@ -14,6 +22,7 @@ namespace display {
 
 static const char *TAG = "ROSTER_LIST_SCREEN";
 
+// Builds the roster list UI and subscribes to the roster-updated message.
 void RosterListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
 
@@ -38,6 +47,7 @@ void RosterListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
   refreshList();
 }
 
+// Clears and repopulates the list widget from the latest roster data.
 void RosterListScreen::refreshList() {
   auto wifiControl = utilities::WifiControl::instance();
   auto dccProtocol = wifiControl->dccProtocol();
@@ -73,8 +83,10 @@ void RosterListScreen::refreshList() {
   }
 }
 
+// No message subscriptions to remove for RosterList.
 void RosterListScreen::unsubscribeAll() {}
 
+// Releases widget pointers and message subscriptions.
 void RosterListScreen::cleanUp() {
   ESP_LOGI(TAG, "Cleaning up RosterListScreen");
   isCleanedUp = true;
@@ -87,6 +99,7 @@ void RosterListScreen::cleanUp() {
   lv_obj_clean(lvObj_);
 }
 
+// Returns to the previous screen (typically FirstScreen).
 void RosterListScreen::button_back_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -98,6 +111,8 @@ void RosterListScreen::button_back_callback(lv_event_t *e) {
   }
 }
 
+// Handles taps on individual roster entries: opens DCCMenu for the selected
+// locomotive.
 void RosterListScreen::button_listitem_click_event_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -139,6 +154,7 @@ void RosterListScreen::button_listitem_click_event_callback(lv_event_t *e) {
   }
 }
 
+// Returns the RosterListItem whose LVGL button matches bn, or nullptr.
 std::shared_ptr<RosterListItem> RosterListScreen::getItem(lv_obj_t *bn) {
   for (const auto &item : listItems) {
     if (item->getLvObj() == bn) {

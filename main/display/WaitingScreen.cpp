@@ -1,3 +1,11 @@
+/**
+ * @file WaitingScreen.cpp
+ * @brief Intermediate screen shown while a DCC-EX TCP connection is in progress.
+ *
+ * Displays a spinner and status text while the connection task runs. Subscribes
+ * to MSG_DCC_CONNECTION_FAILED to show an error message box and return to the
+ * main screen if the attempt fails.
+ */
 #include "WaitingScreen.h"
 #include "FirstScreen.h"
 #include "LvglWrapper.h"
@@ -8,9 +16,12 @@ namespace display {
 using namespace ui;
 
 namespace {
+// LVGL async callback: returns to FirstScreen after an error is dismissed.
 void return_to_main_screen(void *) { display::FirstScreen::instance()->showScreen(); }
 } // namespace
 
+// Builds the waiting screen UI (spinner + labels) and subscribes to the
+// connection-failed message.
 void WaitingScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
   lv_obj_clean(lv_screen_active());
@@ -44,6 +55,7 @@ void WaitingScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
       this);
 }
 
+// Updates the primary status label text.
 void WaitingScreen::setLabel(const std::string &text) {
   message = text;
   if (label) {
@@ -51,6 +63,7 @@ void WaitingScreen::setLabel(const std::string &text) {
   }
 }
 
+// Updates the secondary sub-label text shown below the status label.
 void WaitingScreen::setSubLabel(const std::string &text) {
   subMessage = text;
   if (sub_label) {
@@ -58,6 +71,7 @@ void WaitingScreen::setSubLabel(const std::string &text) {
   }
 }
 
+// Removes message subscriptions.
 void WaitingScreen::unsubscribeAll() {
   if (msg_subscribe_success) {
     lv_msg_unsubscribe(msg_subscribe_success);

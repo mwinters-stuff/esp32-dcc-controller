@@ -1,3 +1,12 @@
+/**
+ * @file WifiHandler.cpp
+ * @brief WiFi connection management and mDNS WiThrottle server discovery.
+ *
+ * Initialises the ESP32 WiFi station, connects using saved or manually entered
+ * credentials and publishes lv_msg events for connection state changes. Also
+ * runs a periodic mDNS query loop that discovers WiThrottle services on the
+ * local network and maintains the withrottle_devices list.
+ */
 #include "WifiHandler.h"
 #include "definitions.h"
 #include "display/MessageBox.h"
@@ -17,16 +26,22 @@
 #include <string>
 #include <vector>
 
+#define MDNS_TIMEOUT 5000
+#define MDNS_QUERY_TIMEOUT 3000
+#define MDNS_MAX_RESULTS 10
+
+// Short-lived FreeRTOS task that calls WifiHandler::WifiConnectTask and then
+// deletes itself.
 static void wifi_connect_task(void *pvParameter) {
-  auto *sp = static_cast<std::shared_ptr<utilities::wifi_credentials_t> *>(pvParameter);
-  (*sp)->wifiHandler->WifiConnectTask(sp->get());
-  delete sp;
+  std::unique_ptr<utilities::wifi_credentials_t> creds(static_cast<utilities::wifi_credentials_t *>(pvParameter));
+  creds->wifiHandler->WifiConnectTask(creds.get());
 }
 
+// Short-lived FreeRTOS task that calls WifiHandler::WifiConnectManualTask and
+// then deletes itself.
 static void wifi_connect_manual_task(void *pvParameter) {
-  auto *sp = static_cast<std::shared_ptr<utilities::wifi_credentials_t> *>(pvParameter);
-  (*sp)->wifiHandler->WifiConnectManualTask(sp->get());
-  delete sp;
+  std::unique_ptr<utilities::wifi_credentials_t> creds(static_cast<utilities::wifi_credentials_t *>(pvParameter));
+  creds->wifiHandler->WifiConnectManualTask(creds.get());
 }
 
 namespace utilities {
@@ -41,6 +56,8 @@ static TaskHandle_t s_mdns_search_task = nullptr;
 // Storage for discovered devices
 std::vector<WithrottleDevice> WifiHandler::withrottle_devices;
 
+// Initialises the esp_netif stack, creates the STA interface and configures
+// the WiFi driver with the project's default settings.
 void WifiHandler::init_wifi() {
   ESP_LOGI(TAG, "Initializing WiFi");
   ESP_ERROR_CHECK(esp_netif_init());
@@ -56,6 +73,9 @@ void WifiHandler::init_wifi() {
   loadAndConnect();
 }
 
+// esp_event_loop callback: handles WIFI_EVENT_STA_DISCONNECTED,
+// WIFI_EVENT_STA_CONNECTED and IP_EVENT_STA_GOT_IP to set the connected flag,
+// publish lv_msg events and update the IP address string.
 void WifiHandler::wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data) {
   WifiHandler *self = static_cast<WifiHandler *>(arg);
 
@@ -68,28 +88,12 @@ void WifiHandler::wifi_event_handler(void *arg, esp_event_base_t event_base, int
       ESP_LOGI(TAG, "Manual connect in progress, skipping disconnect handling");
       lv_async_call(
           [](void *arg) {
-            auto payload = new utilities::ReshowScreenData{"Connection Failed", "Please check your password and try again."};
-            lv_msg_send(
-                MSG_RESHOW_WIFI_CONNECT_SCREEN,
-                payload
-            );
+            auto payload =
+                new utilities::ReshowScreenData{"Connection Failed", "Please check your password and try again."};
+            lv_msg_send(MSG_RESHOW_WIFI_CONNECT_SCREEN, payload);
             delete payload; // Clean up heap-allocated payload after use
           },
           self);
-
-    // } else {
-    //   // const bool suppressGlobalPopup = self->interactiveConnectInProgress;
-    //   // self->interactiveConnectInProgress = false; // Clear flag after reading it
-    //   lv_async_call(
-    //       [](void *arg) {
-    //         display::showMessageBox("WiFi Failed", "WiFi connection failed.", display::MessageBoxState::Error, nullptr,
-    //                                 nullptr);
-    //         //       bool suppress = arg != nullptr;
-    //         //       WifiFailedPayload payload{WifiFailedSource::Disconnected, suppress};
-    //         //       lv_msg_send(MSG_WIFI_FAILED, &payload);
-    //       },
-    //       nullptr);
-      //     suppressGlobalPopup ? self : nullptr);
     }
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     ESP_LOGI(TAG, "WifiEventHandler: IP_EVENT_STA_GOT_IP");
@@ -100,10 +104,12 @@ void WifiHandler::wifi_event_handler(void *arg, esp_event_base_t event_base, int
         },
         nullptr);
 
-    self->startMdnsSearchLoop(5000 /*interval_ms*/, 2000 /*query_timeout_ms*/, 10 /*max_results*/);
+    self->startMdnsSearchLoop();
   }
 }
 
+// Creates the FreeRTOS event group used to signal WiFi connect/fail events
+// and registers the wifi_event_handler for all relevant events.
 void WifiHandler::wifi_event_group_init() {
   ESP_LOGI(TAG, "Initializing WiFi event group");
   wifi_event_group = xEventGroupCreate();
@@ -143,6 +149,8 @@ esp_err_t WifiHandler::saveConfiguration() {
   return ESP_OK;
 }
 
+// Reads saved SSID/password from NVS and starts a connection task. If no
+// credentials are saved, calls noConnectionSaved().
 void WifiHandler::loadAndConnect() {
   esp_err_t err;
 
@@ -168,10 +176,17 @@ void WifiHandler::loadAndConnect() {
     return;
   }
 
-  xTaskCreate(&::wifi_connect_task, "wifi_connect_task", 4096, new std::shared_ptr<wifi_credentials_t>(creds),
-              tskIDLE_PRIORITY, nullptr);
+  auto *taskCreds = new wifi_credentials_t(*creds);
+  BaseType_t taskCreated =
+      xTaskCreate(&::wifi_connect_task, "wifi_connect_task", 4096, taskCreds, tskIDLE_PRIORITY, nullptr);
+  if (taskCreated != pdPASS) {
+    delete taskCreds;
+    ESP_LOGE(TAG, "Failed to create wifi_connect_task");
+    noConnectionSaved();
+  }
 }
 
+// Called when no saved WiFi credentials exist; publishes MSG_WIFI_NOT_SAVED.
 void WifiHandler::noConnectionSaved() {
   lv_async_call(
       [](void *) {
@@ -180,6 +195,8 @@ void WifiHandler::noConnectionSaved() {
       nullptr);
 }
 
+// FreeRTOS task body for automatic re-connection attempts using saved
+// credentials. Retries up to a fixed limit before publishing MSG_WIFI_FAILED.
 void WifiHandler::WifiConnectTask(void *pvParameter) {
   manualConnectInProgress = false;
   stopMdnsSearchLoop();
@@ -225,6 +242,9 @@ void WifiHandler::WifiConnectTask(void *pvParameter) {
   vTaskDelete(NULL);
 }
 
+// FreeRTOS task body for a manual connection attempt (user-supplied SSID +
+// password). On success saves credentials to NVS; on failure fires
+// MSG_WIFI_CONNECTION_FAILED.
 void WifiHandler::WifiConnectManualTask(void *pvParameter) {
   manualConnectInProgress = true;
   stopMdnsSearchLoop();
@@ -252,13 +272,10 @@ void WifiHandler::WifiConnectManualTask(void *pvParameter) {
     ESP_LOGE(TAG, "wifi connect failed: %s", esp_err_to_name(err));
     lv_async_call(
         [](void *arg) {
-            auto payload = new utilities::ReshowScreenData{"Connection Failed", "Please check your password and try again."};
-            lv_msg_send(
-                MSG_RESHOW_WIFI_CONNECT_SCREEN,
-                payload
-            );
-            delete payload; // Clean up heap-allocated payload after use
-
+          auto payload =
+              new utilities::ReshowScreenData{"Connection Failed", "Please check your password and try again."};
+          lv_msg_send(MSG_RESHOW_WIFI_CONNECT_SCREEN, payload);
+          delete payload; // Clean up heap-allocated payload after use
         },
         this);
     vTaskDelete(NULL);
@@ -275,6 +292,8 @@ void WifiHandler::WifiConnectManualTask(void *pvParameter) {
   vTaskDelete(NULL);
 }
 
+// Spawns either WifiConnectTask or WifiConnectManualTask depending on
+// manualConnect, passing ssid and password.
 void WifiHandler::create_wifi_connect_task(const char *ssid, const char *password, bool manualConnect) {
   creds = std::make_shared<utilities::wifi_credentials_t>();
   strncpy(creds->ssid, ssid, sizeof(creds->ssid));
@@ -282,12 +301,20 @@ void WifiHandler::create_wifi_connect_task(const char *ssid, const char *passwor
   creds->wifiHandler = shared_from_this();
 
   manualConnectInProgress = manualConnect;
-  xTaskCreate(manualConnect ? &wifi_connect_manual_task : &::wifi_connect_task, "wifi_connect_task", 4096,
-              new std::shared_ptr<utilities::wifi_credentials_t>(creds), tskIDLE_PRIORITY, nullptr);
+  auto *taskCreds = new wifi_credentials_t(*creds);
+  BaseType_t taskCreated = xTaskCreate(manualConnect ? &wifi_connect_manual_task : &::wifi_connect_task,
+                                       "wifi_connect_task", 4096, taskCreds, tskIDLE_PRIORITY, nullptr);
+  if (taskCreated != pdPASS) {
+    delete taskCreds;
+    ESP_LOGE(TAG, "Failed to create wifi connect task");
+  }
 }
 
+// Returns true if an IP address has been assigned to the STA interface.
 bool WifiHandler::isConnected() { return connected; }
 
+// Returns the current IPv4 address as a dotted-decimal string, or an empty
+// string if not connected.
 std::string WifiHandler::getIpAddress() const {
   // If your class stores esp_netif_t* station_netif, use that instead of getting by key.
   esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
@@ -305,7 +332,9 @@ std::string WifiHandler::getIpAddress() const {
 }
 
 // New: start an mDNS search for _withrottle and populate withrottle_devices
-void WifiHandler::searchMdnsWithrottle(uint32_t timeout_ms /*= 3000*/, size_t max_results /*= 10*/) {
+// Runs a single synchronous mDNS query for "_withrottle._tcp" services and
+// populates withrottle_devices with the results.
+void WifiHandler::searchMdnsWithrottle() {
   ESP_LOGI(TAG, "Starting mDNS search for service '_withrottle'");
   // mdns_init() is called once in startMdnsSearchLoop(). Calling it again here
   // returns ESP_ERR_INVALID_STATE, which would abort via ESP_ERROR_CHECK.
@@ -313,7 +342,7 @@ void WifiHandler::searchMdnsWithrottle(uint32_t timeout_ms /*= 3000*/, size_t ma
   // Query for PTR records of the service; service string usually includes proto, e.g. "_withrottle._tcp".
   const char *service = "_withrottle";
   mdns_result_t *results = nullptr;
-  esp_err_t err = mdns_query_ptr(service, "_tcp", timeout_ms, max_results, &results);
+  esp_err_t err = mdns_query_ptr(service, "_tcp", 3000, 10, &results);
 
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "mdns_query_ptr('%s') failed: %s", service, esp_err_to_name(err));
@@ -325,6 +354,8 @@ void WifiHandler::searchMdnsWithrottle(uint32_t timeout_ms /*= 3000*/, size_t ma
 }
 
 // Background task entry used for continuous searching.
+// FreeRTOS task body: periodically calls searchMdnsWithrottle() and publishes
+// MSG_MDNS_SEARCH_UPDATED until the stop flag is set.
 static void mdns_search_task_fn(void *arg) {
   struct TaskParams {
     WifiHandler *self;
@@ -345,7 +376,7 @@ static void mdns_search_task_fn(void *arg) {
 
   // loop until stopped
   while (s_mdns_search_running) {
-    self->searchMdnsWithrottle(qtimeout, maxr);
+    self->searchMdnsWithrottle();
     // wait interval while allowing task to be cancelled
     for (uint32_t waited = 0; waited < interval && s_mdns_search_running; waited += 200) {
       vTaskDelay(pdMS_TO_TICKS(200));
@@ -363,8 +394,8 @@ static void mdns_search_task_fn(void *arg) {
 }
 
 // Start continuous mDNS search loop. Safe to call repeatedly.
-void WifiHandler::startMdnsSearchLoop(uint32_t interval_ms /*= 5000*/, uint32_t query_timeout_ms /*= 2000*/,
-                                      size_t max_results /*= 10*/) {
+// Starts the mDNS discovery loop task if it is not already running.
+void WifiHandler::startMdnsSearchLoop() {
   if (s_mdns_search_running) {
     ESP_LOGI(TAG, "mDNS search loop already running");
     return;
@@ -389,9 +420,9 @@ void WifiHandler::startMdnsSearchLoop(uint32_t interval_ms /*= 5000*/, uint32_t 
 
   TaskParams *p = (TaskParams *)malloc(sizeof(TaskParams));
   p->self = this;
-  p->interval_ms = interval_ms;
-  p->query_timeout_ms = query_timeout_ms;
-  p->max_results = max_results;
+  p->interval_ms = MDNS_TIMEOUT;
+  p->query_timeout_ms = MDNS_QUERY_TIMEOUT;
+  p->max_results = MDNS_MAX_RESULTS;
 
   BaseType_t ok = xTaskCreate(&mdns_search_task_fn, "mdns_search", 6144, p, tskIDLE_PRIORITY + 1, &s_mdns_search_task);
   if (ok != pdPASS) {
@@ -402,6 +433,7 @@ void WifiHandler::startMdnsSearchLoop(uint32_t interval_ms /*= 5000*/, uint32_t 
 }
 
 // Stop the continuous mDNS search loop.
+// Signals the mDNS task to stop and blocks until it exits.
 void WifiHandler::stopMdnsSearchLoop() {
   ESP_LOGI(TAG, "Stopping mDNS search loop");
   if (!s_mdns_search_running)
@@ -410,7 +442,7 @@ void WifiHandler::stopMdnsSearchLoop() {
   s_mdns_search_running = false;
 
   // wait briefly for task to exit
-  const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(5000);
+  const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(MDNS_TIMEOUT);
   while (s_mdns_search_task != nullptr && xTaskGetTickCount() < deadline) {
     vTaskDelay(pdMS_TO_TICKS(50));
   }
@@ -423,6 +455,8 @@ void WifiHandler::stopMdnsSearchLoop() {
 }
 
 // New: parse a linked list of mdns_result_t and add devices to the list
+// Iterates over raw mdns_result_t records and calls addWithrottleDeviceFromResult
+// for each one, then frees the result list.
 void WifiHandler::handleMdnsResults(mdns_result_t *results) {
   for (mdns_result_t *r = results; r != nullptr; r = r->next) {
     addWithrottleDeviceFromResult(r);
@@ -431,6 +465,7 @@ void WifiHandler::handleMdnsResults(mdns_result_t *results) {
   // ESP_LOGI(TAG, "mDNS: found %u _withrottle device(s)", (unsigned)withrottle_devices.size());
 }
 
+// Logs a discovered WiThrottle device's hostname, IP and port.
 void WifiHandler::logMDNSResult(WithrottleDevice &dev) {
   ESP_LOGI(TAG, "MDNS Instance: %s", dev.instance.c_str());
   ESP_LOGI(TAG, "MDNS Hostname: %s", dev.hostname.c_str());
@@ -441,6 +476,8 @@ void WifiHandler::logMDNSResult(WithrottleDevice &dev) {
 }
 
 // New: convert a single mdns_result_t into a WithrottleDevice and append to list
+// Extracts hostname, IP address, port and instance name from a single
+// mdns_result_t record and upserts it into withrottle_devices.
 void WifiHandler::addWithrottleDeviceFromResult(mdns_result_t *r) {
   if (!r)
     return;
@@ -506,5 +543,6 @@ void WifiHandler::addWithrottleDeviceFromResult(mdns_result_t *r) {
 }
 
 // New: getter for the discovered devices
+// Returns a copy of the current withrottle_devices list.
 std::vector<WithrottleDevice> WifiHandler::getWithrottleDevices() const { return withrottle_devices; }
 } // namespace utilities

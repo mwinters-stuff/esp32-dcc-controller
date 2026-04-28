@@ -1,3 +1,11 @@
+/**
+ * @file MessageBox.cpp
+ * @brief Modal overlay helper that displays a title, message and OK button.
+ *
+ * Only one message box may be active at a time. `showMessageBox()` is the
+ * single public entry point; any previous overlay is deleted before a new one
+ * is created. The optional `onOk` callback is invoked when the user confirms.
+ */
 #include "MessageBox.h"
 #include "LvglWrapper.h"
 #include <esp_log.h>
@@ -33,6 +41,8 @@ StateVisual stateVisual(MessageBoxState state) {
   }
 }
 
+// LV_EVENT_DELETE callback: fires when the overlay container is destroyed.
+// Clears the global active-overlay pointer and invokes the user callback (if any).
 void overlay_delete_callback(lv_event_t *e) {
   if (lv_event_get_code(e) != LV_EVENT_DELETE)
     return;
@@ -47,6 +57,8 @@ void overlay_delete_callback(lv_event_t *e) {
   }
 }
 
+// Handles the OK button click: deletes the overlay which in turn fires
+// overlay_delete_callback and the user-supplied onOk callback.
 void ok_button_callback(lv_event_t *e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED)
     return;
@@ -67,6 +79,8 @@ void ok_button_callback(lv_event_t *e) {
 
 } // namespace
 
+// Creates (or replaces) the modal overlay with the supplied title, message,
+// visual state style and optional OK callback.
 void showMessageBox(const char *title, const char *message, MessageBoxState state, MessageBoxOkCallback onOk,
                     void *onOkUserData) {
   lv_obj_t *screen = lv_screen_active();

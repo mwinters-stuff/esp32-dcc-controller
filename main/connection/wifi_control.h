@@ -4,6 +4,8 @@
 #define _WIFI_CONTROL_H
 
 #include <DCCEXProtocol.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include <lwip/tcp.h>
 
 #include <memory>
@@ -67,6 +69,7 @@ private:
   volatile bool connectCallbackDone_ = false;
   volatile bool connectCallbackSuccess_ = false;
   volatile err_t connectCallbackErr_ = ERR_OK;
+  SemaphoreHandle_t stateMutex_ = nullptr;
 
   struct ConnectTaskArgs {
     WifiControl *self;

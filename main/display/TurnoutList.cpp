@@ -1,3 +1,11 @@
+/**
+ * @file TurnoutList.cpp
+ * @brief Screen displaying the turnout/point list from the DCC-EX server.
+ *
+ * Each entry shows the turnout name and thrown/closed state. Tapping or
+ * pressing the rotary encoder toggles the turnout via WiThrottle. Supports
+ * rotary-encoder navigation with focus outlines.
+ */
 #include "TurnoutList.h"
 #include "DCCMenu.h"
 #include "FirstScreen.h"
@@ -15,6 +23,7 @@ namespace display {
 
 static const char *TAG = "TURNOUT_LIST_SCREEN";
 
+// Draws or clears the focus outline on a turnout list item.
 static void apply_focus_outline(lv_obj_t *obj, bool focused) {
   if (!obj) {
     return;
@@ -26,6 +35,8 @@ static void apply_focus_outline(lv_obj_t *obj, bool focused) {
   lv_obj_set_style_border_side(obj, focused ? LV_BORDER_SIDE_FULL : LV_BORDER_SIDE_NONE, LV_PART_MAIN);
 }
 
+// Builds the turnout list UI, registers rotary callbacks and subscribes to
+// turnout updated / thrown-state messages.
 void TurnoutListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
 
@@ -67,6 +78,7 @@ void TurnoutListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScree
                                                      &TurnoutListScreen::rotary_long_press_trampoline, this);
 }
 
+// Clears and repopulates the list widget from the latest turnout data.
 void TurnoutListScreen::refreshList() {
   ESP_LOGI(TAG, "Refreshing turnout list");
   auto wifiControl = utilities::WifiControl::instance();
@@ -98,6 +110,7 @@ void TurnoutListScreen::refreshList() {
   updateFocusedState();
 }
 
+// Removes turnout-related lv_msg subscriptions.
 void TurnoutListScreen::unsubscribeAll() {
   if (turnout_changed_sub) {
     lv_msg_unsubscribe(turnout_changed_sub);
@@ -105,6 +118,7 @@ void TurnoutListScreen::unsubscribeAll() {
   }
 }
 
+// Releases widget pointers, unregisters rotary callbacks and clears item list.
 void TurnoutListScreen::cleanUp() {
   ESP_LOGI(TAG, "Cleaning up TurnoutListScreen");
   isCleanedUp = true;
@@ -120,6 +134,7 @@ void TurnoutListScreen::cleanUp() {
   lv_obj_clean(lvObj_);
 }
 
+// Returns to the previous screen.
 void TurnoutListScreen::button_back_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -131,6 +146,7 @@ void TurnoutListScreen::button_back_callback(lv_event_t *e) {
   }
 }
 
+// Handles touch taps on list items: toggles the turnout thrown state.
 void TurnoutListScreen::button_listitem_click_event_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -162,6 +178,7 @@ void TurnoutListScreen::button_listitem_click_event_callback(lv_event_t *e) {
   }
 }
 
+// Refreshes focus outlines across all list items.
 void TurnoutListScreen::updateFocusedState() {
   for (size_t i = 0; i < listItems.size(); ++i) {
     auto obj = listItems[i]->getLvObj();
@@ -179,6 +196,7 @@ void TurnoutListScreen::updateFocusedState() {
   }
 }
 
+// Moves the rotary focus by `direction` steps (+1 down, -1 up).
 void TurnoutListScreen::moveFocus(int direction) {
   if (isCleanedUp || listItems.empty() || direction == 0) {
     return;
@@ -198,6 +216,7 @@ void TurnoutListScreen::moveFocus(int direction) {
   updateFocusedState();
 }
 
+// Sends a throw/close command for the focused turnout.
 void TurnoutListScreen::activateFocused() {
   if (isCleanedUp || focusedIndex < 0 || focusedIndex >= static_cast<int>(listItems.size())) {
     return;
@@ -209,6 +228,7 @@ void TurnoutListScreen::activateFocused() {
   }
 }
 
+// Returns to the previous screen via the standard back path.
 void TurnoutListScreen::goBack() {
   if (isCleanedUp) {
     return;
@@ -219,6 +239,7 @@ void TurnoutListScreen::goBack() {
   }
 }
 
+// Drains the pending rotation count and moves focus accordingly.
 void TurnoutListScreen::processPendingRotate() {
   int32_t steps = pendingRotateSteps.exchange(0, std::memory_order_relaxed);
   while (steps > 0) {
@@ -231,6 +252,7 @@ void TurnoutListScreen::processPendingRotate() {
   }
 }
 
+// Rotary encoder rotate ISR trampoline: accumulates delta into pendingRotate.
 void TurnoutListScreen::rotary_rotate_trampoline(int32_t delta, void *userData) {
   auto *self = static_cast<TurnoutListScreen *>(userData);
   if (!self || self->isCleanedUp) {
@@ -241,6 +263,7 @@ void TurnoutListScreen::rotary_rotate_trampoline(int32_t delta, void *userData) 
   lv_async_call(&TurnoutListScreen::rotary_process_trampoline, self);
 }
 
+// Rotary encoder click trampoline: activates the focused turnout.
 void TurnoutListScreen::rotary_click_trampoline(void *userData) {
   auto *self = static_cast<TurnoutListScreen *>(userData);
   if (!self || self->isCleanedUp) {
@@ -257,6 +280,7 @@ void TurnoutListScreen::rotary_click_trampoline(void *userData) {
       self);
 }
 
+// Rotary encoder long-press trampoline: navigates back.
 void TurnoutListScreen::rotary_long_press_trampoline(void *userData) {
   auto *self = static_cast<TurnoutListScreen *>(userData);
   if (!self || self->isCleanedUp) {
@@ -273,6 +297,7 @@ void TurnoutListScreen::rotary_long_press_trampoline(void *userData) {
       self);
 }
 
+// LVGL async trampoline that flushes pending rotate events on the LVGL thread.
 void TurnoutListScreen::rotary_process_trampoline(void *userData) {
   auto *self = static_cast<TurnoutListScreen *>(userData);
   if (self && !self->isCleanedUp) {
@@ -280,6 +305,7 @@ void TurnoutListScreen::rotary_process_trampoline(void *userData) {
   }
 }
 
+// Sends the throw/close command for `item` with the specified new state.
 void TurnoutListScreen::throwTurnout(std::shared_ptr<TurnoutListItem> item, bool newThrownState) {
   ESP_LOGI(TAG, "Found item for turnout ID %d new thrown %s", item->getTurnoutId(),
            newThrownState ? "thrown" : "closed");
@@ -313,6 +339,7 @@ void TurnoutListScreen::throwTurnout(std::shared_ptr<TurnoutListItem> item, bool
   }
 }
 
+// Returns the TurnoutListItem whose LVGL button matches bn, or nullptr.
 std::shared_ptr<TurnoutListItem> TurnoutListScreen::getItem(lv_obj_t *bn) {
   for (const auto &item : listItems) {
     if (item->getLvObj() == bn) {
@@ -322,6 +349,7 @@ std::shared_ptr<TurnoutListItem> TurnoutListScreen::getItem(lv_obj_t *bn) {
   return nullptr;
 }
 
+// Returns the TurnoutListItem matching the given DCC turnout ID, or nullptr.
 std::shared_ptr<TurnoutListItem> TurnoutListScreen::getItemByTurnoutId(int turnoutId) {
   for (const auto &item : listItems) {
     if (item->getTurnoutId() == turnoutId) {

@@ -1,3 +1,12 @@
+/**
+ * @file wifi_control.cpp
+ * @brief WifiControl — manages the WiThrottle TCP connection lifecycle.
+ *
+ * Opens a raw lwIP TCP socket to a DCC-EX WiThrottle server, feeds incoming
+ * data to DCCEXProtocol, and publishes lv_msg events for connection state
+ * changes. A dedicated FreeRTOS task (`wifi_loop_task`) drives the protocol
+ * loop; access to shared state is serialised with a FreeRTOS mutex.
+ */
 #include "wifi_control.h"
 
 #include <lwip/ip_addr.h>
@@ -20,6 +29,8 @@ extern QueueHandle_t tcp_fail_queue;
 
 static const char *TAG = "WifiControl";
 
+// FreeRTOS task body: calls WifiControl::loop() in a tight loop until the
+// WifiControl instance is destroyed.
 void wifi_loop_task(void *arg) {
   auto self = static_cast<WifiControl *>(arg);
   while (true) {
@@ -28,10 +39,15 @@ void wifi_loop_task(void *arg) {
   }
 }
 
+// Constructor: calls init() to allocate the mutex and start the loop task.
 WifiControl::WifiControl() { init(); }
 
+// Creates the state mutex and spawns wifi_loop_task.
 void WifiControl::init() {
   dccMillis = new ESPDCCMillis();
+  if (stateMutex_ == nullptr) {
+    stateMutex_ = xSemaphoreCreateMutex();
+  }
   xTaskCreate(wifi_loop_task,   // Your task function
               "wifi_loop_task", // Name
               4096,             // Stack size
@@ -41,6 +57,8 @@ void WifiControl::init() {
   );
 }
 
+// Placeholder — TCP connection is initiated by connectToServer(); always
+// returns true.
 bool WifiControl::connect() { return true; }
 
 err_t WifiControl::tcp_connected_callback(void *arg, struct tcp_pcb *tpcb, err_t err) {
@@ -55,6 +73,8 @@ err_t WifiControl::tcp_connected_callback(void *arg, struct tcp_pcb *tpcb, err_t
   return ERR_OK;
 }
 
+// lwIP TCP error callback: fires when the connection is aborted by the remote
+// end or by a network error. Delegates to failError().
 void WifiControl::tcp_connect_err_callback(void *arg, err_t err) {
   auto *self = static_cast<WifiControl *>(arg);
   if (self == nullptr) {
@@ -65,6 +85,8 @@ void WifiControl::tcp_connect_err_callback(void *arg, err_t err) {
   self->connectCallbackDone_ = true;
 }
 
+// Publishes MSG_DCC_CONNECTION_FAILED with the lwIP error code and tears down
+// any partially-open socket.
 void WifiControl::failError(err_t err) {
   switch (err) {
   case ERR_MEM:
@@ -112,6 +134,8 @@ void WifiControl::failError(err_t err) {
 }
 
 // Function to initiate a connection to the server
+// Opens a non-blocking lwIP TCP socket and initiates a connection to the given
+// server. Registers the recv, sent and error callbacks on the pcb.
 void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
   ip_addr_t server_addr;
 
@@ -201,18 +225,25 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
   ESP_LOGI(TAG, "Connection process completed with state: %d", currentConnectionState);
 }
 
+// Main protocol loop: takes the state mutex and calls
+// dccExProtocol->loop() to process any inbound WiThrottle data. Must be
+// called repeatedly from wifi_loop_task.
 void WifiControl::loop() {
-  if (dccExProtocol) {
-    dccExProtocol->check();
-    uint64_t now_ms = millis();
-    if (now_ms - lastGetListsMs >= 1000) {
-      dccExProtocol->getLists(true, true, true, true);
-      lastGetListsMs = now_ms;
+  if (stateMutex_ != nullptr && xSemaphoreTake(stateMutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
+    if (dccExProtocol) {
+      dccExProtocol->check();
+      uint64_t now_ms = millis();
+      if (now_ms - lastGetListsMs >= 1000) {
+        dccExProtocol->getLists(true, true, true, true);
+        lastGetListsMs = now_ms;
+      }
     }
-  }
 
-  if (stream) {
-    stream->checkHeartbeatTimeout();
+    if (stream) {
+      stream->checkHeartbeatTimeout();
+    }
+
+    xSemaphoreGive(stateMutex_);
   }
 
   err_t err;
@@ -228,6 +259,8 @@ void WifiControl::loop() {
   }
 }
 
+// Thread-safe entry point for screens: copies the address/port and spawns a
+// short-lived FreeRTOS task that calls connectToServer on the lwIP thread.
 void WifiControl::startConnectToServer(const char *server_ip, uint16_t port) {
   if (currentConnectionState == CONNECTING || currentConnectionState == CONNECTED) {
     ESP_LOGI(TAG, "Ignoring connect request; current state=%d", currentConnectionState);
@@ -237,7 +270,18 @@ void WifiControl::startConnectToServer(const char *server_ip, uint16_t port) {
   xTaskCreate(&WifiControl::connect_task, "connect_task", 4096, args, tskIDLE_PRIORITY, nullptr);
 }
 
+// Closes the TCP socket, destroys the protocol/stream objects and publishes
+// MSG_DCC_DISCONNECTED. Serialised under stateMutex_.
 void WifiControl::disconnect() {
+  if (stateMutex_ == nullptr) {
+    return;
+  }
+
+  if (xSemaphoreTake(stateMutex_, pdMS_TO_TICKS(250)) != pdTRUE) {
+    ESP_LOGW(TAG, "disconnect skipped: state mutex unavailable");
+    return;
+  }
+
   if (dccExProtocol) {
     dccExProtocol->disconnect();
     dccExProtocol = nullptr;
@@ -251,9 +295,13 @@ void WifiControl::disconnect() {
     logStream = nullptr;
   }
   currentConnectionState = DISCONNECTED;
+
+  xSemaphoreGive(stateMutex_);
   ESP_LOGI(TAG, "Disconnected from server");
 }
 
+// FreeRTOS task spawned by startConnectToServer: resolves the IP and calls
+// connectToServer, then deletes itself.
 void WifiControl::connect_task(void *arg) {
   auto *args = static_cast<ConnectTaskArgs *>(arg);
   if (args && args->self) {

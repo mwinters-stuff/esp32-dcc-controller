@@ -1,3 +1,12 @@
+/**
+ * @file ManualCalibration.cpp
+ * @brief Screen for performing manual touch-screen calibration.
+ *
+ * Guides the user through tapping known screen corners, computes affine
+ * calibration coefficients and saves them to NVS so the touch driver applies
+ * them on every subsequent boot. A reboot is required to activate the new
+ * coefficients.
+ */
 #include "ManualCalibration.h"
 #include "DisplayManager.h"
 #include "LvglWrapper.h"
@@ -15,6 +24,8 @@ namespace display {
 
 static const char *TAG = "MANUAL_CALIBRATION";
 
+// Builds the calibration screen: instruction label, progress indicator and
+// start/back buttons.
 void ManualCalibration::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
 
   lbl_title = makeLabel(lvObj_, "Calibrate Screen", LV_ALIGN_TOP_MID, 0, 20, "label.title", &lv_font_montserrat_30);
@@ -30,11 +41,12 @@ void ManualCalibration::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScree
   }
 }
 
-void ManualCalibration::cleanUp() { 
+// Releases widget pointers. No message subscriptions to remove.
+void ManualCalibration::cleanUp() { lv_obj_clean(lvObj_); }
 
-  lv_obj_clean(lvObj_); 
-}
-
+// Entry point for the calibration sequence. Clears the screen and renders
+// the first calibration target, then steps through remaining corners on each
+// touch until all samples are collected.
 void ManualCalibration::rebootToCalibrate() {
   esp_err_t err;
   std::unique_ptr<nvs::NVSHandle> handle = nvs::open_nvs_handle(NVS_NAMESPACE, NVS_READWRITE, &err);
@@ -83,6 +95,8 @@ calibrateState ManualCalibration::loadCalibrationFromNVS() {
   return cal;
 }
 
+// Persists the calibration state (raw touch coordinates) for the given corner
+// index to NVS using the nvs_flash API.
 void ManualCalibration::save_to_nvs(calibrateState state) {
   esp_err_t err;
   std::unique_ptr<nvs::NVSHandle> handle = nvs::open_nvs_handle(NVS_NAMESPACE, NVS_READWRITE, &err);
@@ -136,12 +150,15 @@ calibrateState ManualCalibration::load_from_nvs() {
   return calibrateState::calibrated;
 }
 
+// Processes the latest touch sample into the active calibration step and
+// advances to the next corner or finalises calibration when all corners are done.
 void ManualCalibration::calibrate() {
   DisplayManager::gfx.calibrateTouch(parameters, TFT_WHITE, TFT_BLACK, 15);
   save_to_nvs(calibrated);
   esp_restart();
 }
 
+// Starts the calibration sequence initiated by the user pressing Start.
 void ManualCalibration::button_start_event_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     LV_LOG_USER("Start Calibration");
@@ -149,6 +166,7 @@ void ManualCalibration::button_start_event_callback(lv_event_t *e) {
   }
 }
 
+// Returns to the parent screen without saving.
 void ManualCalibration::button_back_event_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     LV_LOG_USER("Back button clicked");

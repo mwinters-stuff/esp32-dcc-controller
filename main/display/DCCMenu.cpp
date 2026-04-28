@@ -1,4 +1,13 @@
 
+/**
+ * @file DCCMenu.cpp
+ * @brief Main DCC operations menu shown after a successful server connection.
+ *
+ * Displays navigation buttons for Roster, Turnouts, Routes and Turntables,
+ * along with refresh and track-power toggle controls. Buttons are enabled as
+ * the DCC server delivers each list. Closing this screen disconnects from the
+ * server and returns to the home screen.
+ */
 #include "DCCMenu.h"
 #include "ConnectDCC.h"
 #include "FirstScreen.h"
@@ -9,17 +18,22 @@
 #include "TurntableList.h"
 #include "connection/wifi_control.h"
 #include "definitions.h"
+#include "utilities/WifiHandler.h"
 #include <esp_log.h>
 
 namespace display {
 static const char *TAG = "DCC_MENU_SCREEN";
 
+// Stores the IP, port and display name of the server we just connected to.
+// Called by ConnectDCCScreen before showing this screen.
 void DCCMenu::setConnectedServer(std::string ip, int port, std::string dccname) {
   this->ip = ip;
   this->port = port;
   this->dccname = dccname;
 }
 
+// Clears the disabled state on all four category buttons (Roster, Turnouts,
+// Routes, Turntables) so the user can navigate into them.
 void DCCMenu::enableButtons(bool enableConnect) {
   ESP_LOGI(TAG, "EnableButtons");
   if (btn_roster)
@@ -32,6 +46,8 @@ void DCCMenu::enableButtons(bool enableConnect) {
     lv_obj_clear_state(btn_turntables, LV_STATE_DISABLED);
 }
 
+// Adds the disabled state to all four category buttons. Called during screen
+// setup and when the list refresh is in progress.
 void DCCMenu::disableButtons() {
   ESP_LOGI(TAG, "DisableButtons");
   if (btn_roster)
@@ -44,11 +60,30 @@ void DCCMenu::disableButtons() {
     lv_obj_add_state(btn_turntables, LV_STATE_DISABLED);
 }
 
+// Builds and renders the DCC menu UI. Stops any active mDNS discovery loop
+// (off the LVGL thread), creates all buttons and subscribes to DCC list/power
+// messages. Buttons that have already received their data lists are enabled
+// immediately via enableIfReceivedLists().
 void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   // Title Label
   isCleanedUp = false;
   lv_obj_clean(lv_screen_active());
   lvObj_ = lv_screen_active();
+
+  if (utilities::WifiHandler::instance()->isConnected()) {
+    auto *handler = utilities::WifiHandler::instance().get();
+    BaseType_t taskCreated = xTaskCreate(
+        [](void *arg) {
+          auto *wifiHandler = static_cast<utilities::WifiHandler *>(arg);
+          wifiHandler->stopMdnsSearchLoop();
+          vTaskDelete(nullptr);
+        },
+        "mdns_stop", 3072, handler, tskIDLE_PRIORITY + 1, nullptr);
+    if (taskCreated != pdPASS) {
+      ESP_LOGW(TAG, "Failed to create mdns_stop task; stopping mDNS inline");
+      handler->stopMdnsSearchLoop();
+    }
+  }
 
   lbl_title = makeLabel(lvObj_, dccname.c_str(), LV_ALIGN_TOP_MID, 0, 10, "label.title", &lv_font_montserrat_30);
 
@@ -169,6 +204,9 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   ESP_LOGI(TAG, "DCCMenu UI created");
 }
 
+// Checks whether the DCC protocol has already delivered each list and enables
+// the corresponding button immediately, covering the case where lists arrived
+// before this screen was shown (e.g. returning from a sub-screen).
 void DCCMenu::enableIfReceivedLists() {
   auto wifiControl = utilities::WifiControl::instance();
   auto dccProtocol = wifiControl->dccProtocol();
@@ -196,6 +234,8 @@ void DCCMenu::enableIfReceivedLists() {
   }
 }
 
+// Removes all lv_msg subscriptions registered during show(). Must be called
+// before the screen widgets are destroyed to prevent stale callbacks.
 void DCCMenu::unsubscribeAll() {
   if (subscribe_dcc_roster_received != nullptr) {
     lv_msg_unsubscribe(subscribe_dcc_roster_received);
@@ -219,6 +259,8 @@ void DCCMenu::unsubscribeAll() {
   }
 }
 
+// Tears down the screen: unsubscribes all messages, clears LVGL objects and
+// nulls every widget pointer. Sets isCleanedUp so in-flight callbacks no-op.
 void DCCMenu::cleanUp() {
   ESP_LOGI(TAG, "DCCMenu cleaned up");
   isCleanedUp = true;
@@ -235,6 +277,8 @@ void DCCMenu::cleanUp() {
   lbl_status = nullptr;
 }
 
+// Navigates to the Roster list screen, passing this screen as the parent so
+// the back button can return here.
 void DCCMenu::button_roster_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI(TAG, "Roster button clicked!");
@@ -245,6 +289,7 @@ void DCCMenu::button_roster_callback(lv_event_t *e) {
   }
 }
 
+// Navigates to the Turnout list screen.
 void DCCMenu::button_turnouts_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI(TAG, "Turnout button clicked!");
@@ -255,6 +300,7 @@ void DCCMenu::button_turnouts_callback(lv_event_t *e) {
   }
 }
 
+// Navigates to the Route list screen.
 void DCCMenu::button_routes_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI(TAG, "Routes button clicked!");
@@ -265,6 +311,7 @@ void DCCMenu::button_routes_callback(lv_event_t *e) {
   }
 }
 
+// Navigates to the Turntable list screen.
 void DCCMenu::button_turntables_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI(TAG, "Turntables button clicked!");
@@ -276,6 +323,8 @@ void DCCMenu::button_turntables_callback(lv_event_t *e) {
   }
 }
 
+// Re-requests all DCC lists from the server, disabling the category buttons
+// until the responses arrive.
 void DCCMenu::button_refresh_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI(TAG, "Refresh button clicked!");
@@ -292,6 +341,7 @@ void DCCMenu::button_refresh_callback(lv_event_t *e) {
   }
 }
 
+// Toggles main track power on or off based on the current trackPowerState.
 void DCCMenu::button_track_power_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     auto wifiControl = utilities::WifiControl::instance();
@@ -311,6 +361,8 @@ void DCCMenu::button_track_power_callback(lv_event_t *e) {
   }
 }
 
+// Disconnects from the DCC server, cleans up this screen and returns to the
+// main (FirstScreen) home screen.
 void DCCMenu::button_back_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI(TAG, "Close button clicked!");

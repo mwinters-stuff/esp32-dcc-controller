@@ -1,3 +1,11 @@
+/**
+ * @file WifiConnectScreen.cpp
+ * @brief Screen for entering a WiFi password and connecting to a selected SSID.
+ *
+ * Shows an SSID label, a password text area with show/hide toggle, and a
+ * keyboard. Subscribes to MSG_WIFI_CONNECTED / MSG_WIFI_CONNECTION_FAILED to
+ * update the UI or show an error and return to WifiListScreen.
+ */
 #include "WifiConnectScreen.h"
 #include "FirstScreen.h"
 #include "LvglWrapper.h"
@@ -15,6 +23,8 @@ extern EventGroupHandle_t wifi_event_group;
 namespace display {
 static const char *TAG = "WIFI_CONNECT_SCREEN";
 
+// Called when MSG_WIFI_CONNECTED fires. Updates the status label and
+// navigates back to FirstScreen after a brief delay.
 void WifiConnectScreen::wifi_connected_callback(lv_msg_t *msg) {
   if (isCleanedUp)
     return;
@@ -53,6 +63,7 @@ void WifiConnectScreen::wifi_connected_callback(lv_msg_t *msg) {
       1500, this);
 }
 
+// Creates the screen UI and sets up message subscriptions.
 void WifiConnectScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
   createScreen();
@@ -74,6 +85,8 @@ void WifiConnectScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScree
       this);
 }
 
+// Refreshes the on-screen status and subtitle labels without rebuilding the
+// full UI; used after a connection failure to prompt retry.
 void WifiConnectScreen::reshowScreen(const std::string &status, const std::string &subtitle) {
   if (isCleanedUp)
     return;
@@ -91,6 +104,8 @@ void WifiConnectScreen::reshowScreen(const std::string &status, const std::strin
   lv_obj_clear_flag(kb_keyboard, LV_OBJ_FLAG_HIDDEN);
 }
 
+// Called when MSG_WIFI_CONNECTION_FAILED fires. Shows the error message and
+// re-enables the keyboard so the user can try again.
 void WifiConnectScreen::wifi_failed_callback(lv_msg_t *msg) {
   if (isCleanedUp)
     return;
@@ -104,6 +119,7 @@ void WifiConnectScreen::wifi_failed_callback(lv_msg_t *msg) {
   lv_obj_clear_flag(kb_keyboard, LV_OBJ_FLAG_HIDDEN);
 }
 
+// Releases widget pointers and removes message subscriptions.
 void WifiConnectScreen::cleanUp() {
   ESP_LOGI(TAG, "WifiConnectScreen cleaned up");
   isCleanedUp = true;
@@ -135,8 +151,11 @@ void WifiConnectScreen::cleanUp() {
   lbl_status2 = nullptr;
 }
 
+// Stores the target SSID before show() is called.
 void WifiConnectScreen::setSSID(const std::string &ssid) { this->ssid = ssid; }
 
+// Builds the full screen layout: SSID label, password text area, show/hide
+// toggle button, connect button and on-screen keyboard.
 void WifiConnectScreen::createScreen() {
 
   lv_obj_set_size(lvObj_, lv_display_get_horizontal_resolution(NULL), lv_display_get_vertical_resolution(NULL));
@@ -185,6 +204,7 @@ void WifiConnectScreen::createScreen() {
   lv_obj_add_flag(lbl_spinner, LV_OBJ_FLAG_HIDDEN);
 }
 
+// Toggles password visibility between plain text and masked mode.
 void WifiConnectScreen::event_password_show_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -199,10 +219,11 @@ void WifiConnectScreen::event_password_show_callback(lv_event_t *e) {
   }
 }
 
-bool WifiConnectScreen::isPasswordVisible() {
-  return !lv_textarea_get_password_mode(ta_password);
-}
+// Returns true when the password is currently displayed as plain text.
+bool WifiConnectScreen::isPasswordVisible() { return !lv_textarea_get_password_mode(ta_password); }
 
+// Handles on-screen keyboard events: on LV_EVENT_READY starts the WiFi
+// connection attempt using the entered password.
 void WifiConnectScreen::event_keyboard_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -212,7 +233,7 @@ void WifiConnectScreen::event_keyboard_callback(lv_event_t *e) {
     // OK / Enter pressed
     lv_obj_add_flag(kb_keyboard, LV_OBJ_FLAG_HIDDEN);
 
-    if(isPasswordVisible()) {
+    if (isPasswordVisible()) {
       // If password is currently visible, hide it before connecting
       lv_textarea_set_password_mode(ta_password, true);
       lv_label_set_text(bs_password_show, LV_SYMBOL_EYE_OPEN);

@@ -1,3 +1,11 @@
+/**
+ * @file RouteList.cpp
+ * @brief Screen displaying the automation/route list from the DCC-EX server.
+ *
+ * Allows the user to start, pause and resume routes. Supports rotary-encoder
+ * focus navigation and a dedicated pause/resume button that reflects the state
+ * of the currently selected route.
+ */
 #include "RouteList.h"
 #include "LvglWrapper.h"
 #include "connection/wifi_control.h"
@@ -9,6 +17,7 @@ namespace display {
 
 static const char *TAG = "ROUTE_LIST_SCREEN";
 
+// Draws or clears the focus outline on an item.
 static void apply_focus_outline(lv_obj_t *obj, bool focused) {
   if (!obj) {
     return;
@@ -20,6 +29,8 @@ static void apply_focus_outline(lv_obj_t *obj, bool focused) {
   lv_obj_set_style_border_side(obj, focused ? LV_BORDER_SIDE_FULL : LV_BORDER_SIDE_NONE, LV_PART_MAIN);
 }
 
+// Builds the route list UI, sets up rotary callbacks and subscribes to route
+// updated / status messages.
 void RouteListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   (void)parent;
   isCleanedUp = false;
@@ -48,6 +59,7 @@ void RouteListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen)
                                                      &RouteListScreen::rotary_long_press_trampoline, this);
 }
 
+// Clears and repopulates the list widget from the latest route data.
 void RouteListScreen::refreshList() {
   auto wifiControl = utilities::WifiControl::instance();
   auto dccProtocol = wifiControl->dccProtocol();
@@ -77,8 +89,10 @@ void RouteListScreen::refreshList() {
   updateSelectedState();
 }
 
+// No message subscriptions to remove for RouteList.
 void RouteListScreen::unsubscribeAll() {}
 
+// Releases widget pointers, unregisters rotary callbacks and clears item list.
 void RouteListScreen::cleanUp() {
   ESP_LOGI(TAG, "Cleaning up RouteListScreen");
   isCleanedUp = true;
@@ -97,6 +111,7 @@ void RouteListScreen::cleanUp() {
   lv_obj_clean(lvObj_);
 }
 
+// Returns to the previous screen.
 void RouteListScreen::button_back_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -108,6 +123,7 @@ void RouteListScreen::button_back_callback(lv_event_t *e) {
   }
 }
 
+// Toggles the pause/resume state of the focused route.
 void RouteListScreen::button_pause_resume_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -133,6 +149,7 @@ void RouteListScreen::button_pause_resume_callback(lv_event_t *e) {
   }
 }
 
+// Handles touch taps on list items: selects the tapped entry.
 void RouteListScreen::button_listitem_click_event_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -153,6 +170,7 @@ void RouteListScreen::button_listitem_click_event_callback(lv_event_t *e) {
   }
 }
 
+// Refreshes the visual focus indicator across all items.
 void RouteListScreen::updateFocusedState() {
   for (size_t i = 0; i < listItems.size(); ++i) {
     auto obj = listItems[i]->getLvObj();
@@ -170,6 +188,7 @@ void RouteListScreen::updateFocusedState() {
   }
 }
 
+// Refreshes the visual selection state across all items.
 void RouteListScreen::updateSelectedState() {
   for (const auto &item : listItems) {
     auto obj = item->getLvObj();
@@ -185,6 +204,7 @@ void RouteListScreen::updateSelectedState() {
   }
 }
 
+// Moves the rotary focus by `direction` steps (+1 down, -1 up).
 void RouteListScreen::moveFocus(int direction) {
   if (isCleanedUp || listItems.empty() || direction == 0) {
     return;
@@ -204,6 +224,7 @@ void RouteListScreen::moveFocus(int direction) {
   updateFocusedState();
 }
 
+// Sends the start-route command for the given item to the DCC server.
 void RouteListScreen::startRoute(std::shared_ptr<RouteListItem> item) {
   if (!item) {
     return;
@@ -228,6 +249,7 @@ void RouteListScreen::startRoute(std::shared_ptr<RouteListItem> item) {
   setStatusText(status);
 }
 
+// Triggers the action for the currently focused list item.
 void RouteListScreen::activateFocused() {
   if (isCleanedUp || focusedIndex < 0 || focusedIndex >= static_cast<int>(listItems.size())) {
     return;
@@ -239,6 +261,7 @@ void RouteListScreen::activateFocused() {
   }
 }
 
+// Returns to the previous screen via the standard back path.
 void RouteListScreen::goBack() {
   if (isCleanedUp) {
     return;
@@ -249,6 +272,7 @@ void RouteListScreen::goBack() {
   }
 }
 
+// Drains the pending rotation count and moves focus accordingly.
 void RouteListScreen::processPendingRotate() {
   int32_t steps = pendingRotateSteps.exchange(0, std::memory_order_relaxed);
   while (steps > 0) {
@@ -261,6 +285,7 @@ void RouteListScreen::processPendingRotate() {
   }
 }
 
+// Rotary encoder rotate ISR trampoline: accumulates delta into pendingRotate.
 void RouteListScreen::rotary_rotate_trampoline(int32_t delta, void *userData) {
   auto *self = static_cast<RouteListScreen *>(userData);
   if (!self || self->isCleanedUp) {
@@ -271,6 +296,7 @@ void RouteListScreen::rotary_rotate_trampoline(int32_t delta, void *userData) {
   lv_async_call(&RouteListScreen::rotary_process_trampoline, self);
 }
 
+// Rotary encoder click trampoline: activates the focused route.
 void RouteListScreen::rotary_click_trampoline(void *userData) {
   auto *self = static_cast<RouteListScreen *>(userData);
   if (!self || self->isCleanedUp) {
@@ -287,6 +313,7 @@ void RouteListScreen::rotary_click_trampoline(void *userData) {
       self);
 }
 
+// Rotary encoder long-press trampoline: navigates back.
 void RouteListScreen::rotary_long_press_trampoline(void *userData) {
   auto *self = static_cast<RouteListScreen *>(userData);
   if (!self || self->isCleanedUp) {
@@ -303,6 +330,7 @@ void RouteListScreen::rotary_long_press_trampoline(void *userData) {
       self);
 }
 
+// LVGL async trampoline that flushes pending rotate events on the LVGL thread.
 void RouteListScreen::rotary_process_trampoline(void *userData) {
   auto *self = static_cast<RouteListScreen *>(userData);
   if (self && !self->isCleanedUp) {
@@ -310,6 +338,7 @@ void RouteListScreen::rotary_process_trampoline(void *userData) {
   }
 }
 
+// Syncs the pause/resume button label and enabled state with the selected route.
 void RouteListScreen::updatePauseResumeButton() {
   if (!btn_pause_resume) {
     return;
@@ -317,6 +346,7 @@ void RouteListScreen::updatePauseResumeButton() {
   lv_label_set_text(lv_obj_get_child(btn_pause_resume, 0), routesPaused ? "Resume" : "Pause");
 }
 
+// Updates the status text label shown beneath the list.
 void RouteListScreen::setStatusText(const char *text) {
   if (lbl_status) {
     lv_label_set_text(lbl_status, text ? text : "");

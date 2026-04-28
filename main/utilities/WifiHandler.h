@@ -63,11 +63,11 @@ public:
 
   std::string getIpAddress() const;
 
-  void searchMdnsWithrottle(uint32_t timeout_ms = 3000, size_t max_results = 10);
+  void searchMdnsWithrottle();
   void handleMdnsResults(mdns_result_t *results);
   void addWithrottleDeviceFromResult(mdns_result_t *r);
   std::vector<WithrottleDevice> getWithrottleDevices() const;
-  void startMdnsSearchLoop(uint32_t interval_ms = 5000, uint32_t query_timeout_ms = 3000, size_t max_results = 10);
+  void startMdnsSearchLoop();
   void stopMdnsSearchLoop();
 
 private:

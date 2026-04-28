@@ -1,9 +1,19 @@
+/**
+ * @file LvglWrapper.cpp
+ * @brief Convenience factory functions for creating and styling LVGL widgets.
+ *
+ * Wraps common LVGL object-creation patterns (labels, buttons, lists, layouts,
+ * text areas, keyboards) so screens can build their UI with less boilerplate.
+ * All functions must be called from the LVGL task.
+ */
 #include "LvglWrapper.h"
 
 namespace display {
 
 static const char *TAG = "LVGL_WRAPPER";
 
+// Applies a named style from the active LvglTheme to the whole widget
+// (LV_PART_MAIN + LV_STATE_DEFAULT).
 void setStyle(lv_obj_t *widget, const std::string &styleName) {
   auto theme = ui::LvglTheme::active();
   if (theme == nullptr) {
@@ -17,6 +27,8 @@ void setStyle(lv_obj_t *widget, const std::string &styleName) {
   }
 }
 
+// Applies a named style from the active LvglTheme to a specific part/state
+// selector on the widget.
 void setStylePart(lv_obj_t *widget, const std::string &styleName, lv_style_selector_t selector) {
   auto theme = ui::LvglTheme::active();
   if (theme == nullptr) {
@@ -30,8 +42,11 @@ void setStylePart(lv_obj_t *widget, const std::string &styleName, lv_style_selec
   }
 }
 
+// Returns the currently displayed LVGL screen.
 lv_obj_t *getActiveScreen() { return lv_screen_active(); }
 
+// Creates a label with the given text, alignment and pixel offset, then applies
+// the named style if provided.
 lv_obj_t *makeLabel(lv_obj_t *parent, const char *text, lv_align_t align, int32_t x_ofs, int32_t y_ofs,
                     const std::string &styleName, const lv_font_t *font) {
   lv_obj_t *label = lv_label_create(parent);
@@ -44,6 +59,8 @@ lv_obj_t *makeLabel(lv_obj_t *parent, const char *text, lv_align_t align, int32_
   return label;
 }
 
+// Creates a styled button with a text label, explicit dimensions, alignment
+// and optional style name.
 lv_obj_t *makeButton(lv_obj_t *parent, const char *text, int32_t width, int32_t height, lv_align_t align, int32_t x_ofs,
                      int32_t y_ofs, const std::string &styleName, const lv_font_t *font) {
   lv_obj_t *btn = lv_btn_create(parent);
@@ -60,6 +77,8 @@ lv_obj_t *makeButton(lv_obj_t *parent, const char *text, int32_t width, int32_t 
   return btn;
 }
 
+// Creates a scrollable list widget positioned at (x, y) with the given
+// dimensions and optional style name.
 lv_obj_t *makeListView(lv_obj_t *parent, int32_t x, int32_t y, int32_t width, int32_t height,
                        const std::string &styleName) {
   lv_obj_t *list = lv_list_create(parent);
@@ -72,6 +91,7 @@ lv_obj_t *makeListView(lv_obj_t *parent, int32_t x, int32_t y, int32_t width, in
   return list;
 }
 
+// Updates the text label of a list button created via lv_list_add_btn.
 void lv_list_set_btn_text(lv_obj_t *btn, const char *text) {
 
   uint32_t i;
@@ -83,6 +103,7 @@ void lv_list_set_btn_text(lv_obj_t *btn, const char *text) {
   }
 }
 
+// Replaces the icon image on a list button.
 void lv_list_set_btn_icon(lv_obj_t *btn, const lv_image_dsc_t *icon) {
 
   uint32_t i;
@@ -94,8 +115,10 @@ void lv_list_set_btn_icon(lv_obj_t *btn, const lv_image_dsc_t *icon) {
   }
 }
 
+// Adds a button row to a list with a leading icon and label, overriding the
+// default label long-mode so text does not wrap or scroll unexpectedly.
 lv_obj_t *lv_list_add_btn_mode(lv_obj_t *list, const void *icon, const char *txt, const lv_label_long_mode_t mode) {
-  
+
   lv_obj_t *obj = lv_obj_class_create_obj(&lv_list_button_class, list);
   lv_obj_class_init_obj(obj);
   lv_obj_set_size(obj, LV_PCT(100), LV_SIZE_CONTENT);
@@ -118,6 +141,7 @@ lv_obj_t *lv_list_add_btn_mode(lv_obj_t *list, const void *icon, const char *txt
   return obj;
 }
 
+// Creates an animated arc spinner of the given diameter centred at (x, y).
 lv_obj_t *makeSpinner(lv_obj_t *parent, int32_t x, int32_t y, int32_t size, uint16_t speed) {
   lv_obj_t *spinner = lv_spinner_create(parent);
   lv_spinner_set_anim_params(spinner, speed, 60);
@@ -127,6 +151,8 @@ lv_obj_t *makeSpinner(lv_obj_t *parent, int32_t x, int32_t y, int32_t size, uint
   return spinner;
 }
 
+// Creates a flex column layout container with the given dimensions, padding
+// removed and children packed to the top-left.
 lv_obj_t *makeVerticalLayout(lv_obj_t *parent, int32_t width, int32_t height) {
   lv_obj_t *layout = lv_obj_create(parent);
   // Default alignment: top-left
@@ -153,6 +179,8 @@ lv_obj_t *makeVerticalLayout(lv_obj_t *parent, int32_t width, int32_t height) {
   return layout;
 }
 
+// Creates a flex row layout container with the given dimensions, padding
+// removed and children packed to the top-left.
 lv_obj_t *makeHorizontalLayout(lv_obj_t *parent, int32_t width, int32_t height) {
   lv_obj_t *layout = lv_obj_create(parent);
 
@@ -180,6 +208,8 @@ lv_obj_t *makeHorizontalLayout(lv_obj_t *parent, int32_t width, int32_t height) 
   return layout;
 }
 
+// Creates a text-area with placeholder text, optional password masking and
+// optional single-line mode.
 lv_obj_t *makeTextArea(lv_obj_t *parent, const std::string &placeholder, bool password, bool one_line) {
   lv_obj_t *ta = lv_textarea_create(parent);
   lv_obj_set_flex_grow(ta, 1);
@@ -194,6 +224,8 @@ lv_obj_t *makeTextArea(lv_obj_t *parent, const std::string &placeholder, bool pa
   return ta;
 }
 
+// Creates a square button whose label contains an LVGL symbol string (e.g.
+// LV_SYMBOL_CLOSE) with the specified dimensions and alignment.
 lv_obj_t *makeButtonSymbol(lv_obj_t *parent, const std::string &symbol, const int32_t width, const int32_t height,
                            bool checkable) {
   lv_obj_t *btn = lv_btn_create(parent);
@@ -209,6 +241,7 @@ lv_obj_t *makeButtonSymbol(lv_obj_t *parent, const std::string &symbol, const in
   return btn;
 }
 
+// Creates a full-width LVGL keyboard widget attached to parent.
 lv_obj_t *makeKeyboard(lv_obj_t *parent) {
   lv_obj_t *keyboard = lv_keyboard_create(parent);
   lv_obj_add_flag(keyboard, LV_OBJ_FLAG_HIDDEN);

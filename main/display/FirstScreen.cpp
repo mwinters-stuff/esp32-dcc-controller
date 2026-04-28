@@ -1,3 +1,12 @@
+/**
+ * @file FirstScreen.cpp
+ * @brief Home screen shown after boot, displaying WiFi status and navigation
+ *        buttons for Connect DCC, Scan WiFi and Calibrate.
+ *
+ * Subscribes to WiFi state messages to enable/disable the Connect button in
+ * real time. On first WiFi connection also attempts a boot auto-connect to the
+ * previously saved DCC server.
+ */
 #include "FirstScreen.h"
 #include "ConnectDCC.h"
 #include "LvglWrapper.h"
@@ -13,6 +22,8 @@ namespace display {
 static const char *TAG = "FIRST_SCREEN";
 
 namespace {
+// Internal helper: on the first WiFi-up event after boot, checks whether a
+// saved DCC server exists and, if so, opens ConnectDCCScreen to auto-connect.
 void tryAutoConnectSavedDccFromMain(display::FirstScreen *self) {
   if (!self)
     return;
@@ -45,6 +56,8 @@ void tryAutoConnectSavedDccFromMain(display::FirstScreen *self) {
 }
 } // namespace
 
+// Called when MSG_WIFI_CONNECTED is received. Updates the status labels,
+// enables the Connect button and triggers the boot auto-connect check.
 void FirstScreen::wifi_connected_callback(lv_msg_t *msg) {
   if (isCleanedUp)
     return;
@@ -60,6 +73,8 @@ void FirstScreen::wifi_connected_callback(lv_msg_t *msg) {
   tryAutoConnectSavedDccFromMain(this);
 }
 
+// Called when MSG_WIFI_NOT_SAVED is received. Clears the IP label and disables
+// the Connect button since there is no network to reach a DCC server on.
 void FirstScreen::wifi_not_saved_callback(lv_msg_t *msg) {
   if (isCleanedUp)
     return;
@@ -71,6 +86,8 @@ void FirstScreen::wifi_not_saved_callback(lv_msg_t *msg) {
     lv_label_set_text(lbl_ip, "");
 }
 
+// Enables or disables the Connect DCC button. The Calibrate and Scan WiFi
+// buttons are always enabled regardless of the enableConnect flag.
 void FirstScreen::enableButtons(bool enableConnect) {
   if (isCleanedUp)
     return;
@@ -86,6 +103,8 @@ void FirstScreen::enableButtons(bool enableConnect) {
   lv_obj_clear_state(btn_wifi_scan, LV_STATE_DISABLED);
 }
 
+// Disables all navigation buttons; used during initial screen setup before the
+// WiFi state is known.
 void FirstScreen::disableButtons() {
   if (isCleanedUp)
     return;
@@ -97,6 +116,9 @@ void FirstScreen::disableButtons() {
   lv_obj_add_state(btn_wifi_scan, LV_STATE_DISABLED);
 }
 
+// Builds the home screen UI: title, Connect/Scan WiFi/Calibrate buttons and
+// status labels. Subscribes to WiFi messages and immediately reflects current
+// connection state.
 void FirstScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
   lv_obj_clean(lvObj_);
@@ -138,6 +160,8 @@ void FirstScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   }
 }
 
+// Removes message subscriptions and nulls widget pointers. Must be called
+// before navigating to another screen.
 void FirstScreen::cleanUp() {
   ESP_LOGI(TAG, "FirstScreen cleaned up");
   isCleanedUp = true;
@@ -161,6 +185,7 @@ void FirstScreen::cleanUp() {
   lv_obj_clean(lvObj_);
 }
 
+// Opens the ConnectDCC screen.
 void FirstScreen::button_connect_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -172,6 +197,7 @@ void FirstScreen::button_connect_callback(lv_event_t *e) {
   connectDCCScreen->showScreen(FirstScreen::instance());
 }
 
+// Opens the WiFi network scan/selection screen.
 void FirstScreen::button_wifi_list_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
@@ -184,6 +210,7 @@ void FirstScreen::button_wifi_list_callback(lv_event_t *e) {
   wifiScreen->showScreen(FirstScreen::instance());
 }
 
+// Opens the touch-screen calibration screen.
 void FirstScreen::button_calibrate_callback(lv_event_t *e) {
   if (isCleanedUp)
     return;
