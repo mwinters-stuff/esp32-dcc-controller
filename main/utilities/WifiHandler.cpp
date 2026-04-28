@@ -103,8 +103,6 @@ void WifiHandler::wifi_event_handler(void *arg, esp_event_base_t event_base, int
           lv_msg_send(MSG_WIFI_CONNECTED, NULL);
         },
         nullptr);
-
-    self->startMdnsSearchLoop();
   }
 }
 

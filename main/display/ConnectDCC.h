@@ -25,6 +25,7 @@ public:
   static bool loadSavedConnection(utilities::WithrottleDevice &outDevice);
   static bool isBootAutoConnectHandled();
   static void markBootAutoConnectHandled();
+  bool maybeAutoConnectSaved();
 
   void connectToDCCServer(std::shared_ptr<DCCConnectListItem> dccItem);
 
@@ -39,7 +40,6 @@ public:
 
 private:
   bool saveSelectedConnection();
-  bool maybeAutoConnectSaved();
   void connectToDCCDevice(const utilities::WithrottleDevice &dccDevice);
 
   std::vector<std::shared_ptr<DCCConnectListItem>> detectedListItems;

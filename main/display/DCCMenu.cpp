@@ -18,7 +18,6 @@
 #include "TurntableList.h"
 #include "connection/wifi_control.h"
 #include "definitions.h"
-#include "utilities/WifiHandler.h"
 #include <esp_log.h>
 
 namespace display {
@@ -60,30 +59,14 @@ void DCCMenu::disableButtons() {
     lv_obj_add_state(btn_turntables, LV_STATE_DISABLED);
 }
 
-// Builds and renders the DCC menu UI. Stops any active mDNS discovery loop
-// (off the LVGL thread), creates all buttons and subscribes to DCC list/power
-// messages. Buttons that have already received their data lists are enabled
-// immediately via enableIfReceivedLists().
+// Builds and renders the DCC menu UI, creates all buttons and subscribes to
+// DCC list/power messages. Buttons that have already received their data lists
+// are enabled immediately via enableIfReceivedLists().
 void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   // Title Label
   isCleanedUp = false;
   lv_obj_clean(lv_screen_active());
   lvObj_ = lv_screen_active();
-
-  if (utilities::WifiHandler::instance()->isConnected()) {
-    auto *handler = utilities::WifiHandler::instance().get();
-    BaseType_t taskCreated = xTaskCreate(
-        [](void *arg) {
-          auto *wifiHandler = static_cast<utilities::WifiHandler *>(arg);
-          wifiHandler->stopMdnsSearchLoop();
-          vTaskDelete(nullptr);
-        },
-        "mdns_stop", 3072, handler, tskIDLE_PRIORITY + 1, nullptr);
-    if (taskCreated != pdPASS) {
-      ESP_LOGW(TAG, "Failed to create mdns_stop task; stopping mDNS inline");
-      handler->stopMdnsSearchLoop();
-    }
-  }
 
   lbl_title = makeLabel(lvObj_, dccname.c_str(), LV_ALIGN_TOP_MID, 0, 10, "label.title", &lv_font_montserrat_30);
 

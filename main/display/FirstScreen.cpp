@@ -21,10 +21,11 @@
 namespace display {
 static const char *TAG = "FIRST_SCREEN";
 
-namespace {
-// Internal helper: on the first WiFi-up event after boot, checks whether a
-// saved DCC server exists and, if so, opens ConnectDCCScreen to auto-connect.
-void tryAutoConnectSavedDccFromMain(display::FirstScreen *self) {
+// On the first WiFi-up event after boot, checks whether a saved DCC server
+// exists and, if so, opens ConnectDCCScreen and starts the boot-only
+// auto-connect flow.
+void FirstScreen::maybeAutoConnectSavedDccFromMain() {
+  auto *self = this;
   if (!self)
     return;
 
@@ -52,9 +53,10 @@ void tryAutoConnectSavedDccFromMain(display::FirstScreen *self) {
 
   ESP_LOGI(TAG, "Saved DCC connection found. Opening Connect DCC screen for auto-connect.");
   self->cleanUp();
-  display::ConnectDCCScreen::instance()->showScreen(display::FirstScreen::instance());
+  auto connectScreen = display::ConnectDCCScreen::instance();
+  connectScreen->showScreen(display::FirstScreen::instance());
+  connectScreen->maybeAutoConnectSaved();
 }
-} // namespace
 
 // Called when MSG_WIFI_CONNECTED is received. Updates the status labels,
 // enables the Connect button and triggers the boot auto-connect check.
@@ -70,7 +72,7 @@ void FirstScreen::wifi_connected_callback(lv_msg_t *msg) {
       lv_label_set_text(lbl_ip, ip.c_str());
   }
 
-  tryAutoConnectSavedDccFromMain(this);
+  maybeAutoConnectSavedDccFromMain();
 }
 
 // Called when MSG_WIFI_NOT_SAVED is received. Clears the IP label and disables
@@ -156,7 +158,7 @@ void FirstScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
     enableButtons(false);
   } else {
     enableButtons(true);
-    tryAutoConnectSavedDccFromMain(this);
+    maybeAutoConnectSavedDccFromMain();
   }
 }
 

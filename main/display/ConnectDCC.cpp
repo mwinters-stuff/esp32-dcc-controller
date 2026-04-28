@@ -25,6 +25,25 @@ namespace display {
 static const char *TAG = "DCC_CONNECT_SCREEN";
 bool ConnectDCCScreen::bootAutoConnectHandled = false;
 
+namespace {
+
+void stop_mdns_search_async() {
+  auto *handler = utilities::WifiHandler::instance().get();
+  BaseType_t taskCreated = xTaskCreate(
+      [](void *arg) {
+        auto *wifiHandler = static_cast<utilities::WifiHandler *>(arg);
+        wifiHandler->stopMdnsSearchLoop();
+        vTaskDelete(nullptr);
+      },
+      "mdns_stop", 3072, handler, tskIDLE_PRIORITY + 1, nullptr);
+  if (taskCreated != pdPASS) {
+    ESP_LOGW(TAG, "Failed to create mdns_stop task; stopping mDNS inline");
+    handler->stopMdnsSearchLoop();
+  }
+}
+
+} // namespace
+
 // Returns true if the one-shot boot auto-connect attempt has already been made.
 bool ConnectDCCScreen::isBootAutoConnectHandled() { return bootAutoConnectHandled; }
 
@@ -32,7 +51,7 @@ bool ConnectDCCScreen::isBootAutoConnectHandled() { return bootAutoConnectHandle
 void ConnectDCCScreen::markBootAutoConnectHandled() { bootAutoConnectHandled = true; }
 
 // Builds the UI, starts (or resumes) mDNS discovery and, on first boot,
-// attempts an auto-connect to the previously saved server.
+// shows the discovered DCC servers.
 void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
   autoConnectAttempted = false;
@@ -87,25 +106,19 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
         ConnectDCCScreen *self = static_cast<ConnectDCCScreen *>(lv_msg_get_user_data(msg));
         if (!self || self->isCleanedUp)
           return;
-        const bool autoStarted = self->maybeAutoConnectSaved();
-        if (!autoStarted) {
-          auto wifiHandler = utilities::WifiHandler::instance();
-          if (wifiHandler->isConnected()) {
-            wifiHandler->startMdnsSearchLoop();
-          }
+        auto wifiHandler = utilities::WifiHandler::instance();
+        if (wifiHandler->isConnected()) {
+          wifiHandler->startMdnsSearchLoop();
         }
       },
       this);
 
   refreshMdnsList();
-  const bool autoStarted = maybeAutoConnectSaved();
-  if (!autoStarted) {
-    auto wifiHandler = utilities::WifiHandler::instance();
-    if (wifiHandler->isConnected()) {
-      wifiHandler->startMdnsSearchLoop();
-    } else {
-      ESP_LOGW(TAG, "WiFi is not connected; skipping mDNS search loop start");
-    }
+  auto wifiHandler = utilities::WifiHandler::instance();
+  if (wifiHandler->isConnected()) {
+    wifiHandler->startMdnsSearchLoop();
+  } else {
+    ESP_LOGW(TAG, "WiFi is not connected; skipping mDNS search loop start");
   }
 }
 
@@ -226,6 +239,7 @@ void ConnectDCCScreen::resetMsgHandlers() {
 void ConnectDCCScreen::cleanUp() {
   ESP_LOGI(TAG, "Cleaning up ConnectDCCScreen");
   isCleanedUp = true;
+  stop_mdns_search_async();
   resetMsgHandlers();
   detectedListItems.clear();
 
@@ -266,6 +280,10 @@ void ConnectDCCScreen::connectToDCCDevice(const utilities::WithrottleDevice &dcc
   auto wifiHandler = utilities::WifiHandler::instance();
   auto wifiControl = utilities::WifiControl::instance();
 
+  // Stop mDNS once we leave the discovery screen and before the waiting screen
+  // takes over.
+  stop_mdns_search_async();
+
   // Stop receiving mDNS list updates while the waiting screen is active.
   resetMsgHandlers();
 
@@ -299,7 +317,6 @@ void ConnectDCCScreen::connectToDCCDevice(const utilities::WithrottleDevice &dcc
     } while (currentConnectionState == utilities::WifiControl::CONNECTING);
 
     if (currentConnectionState == utilities::WifiControl::CONNECTED) {
-      args->wifiHandler->stopMdnsSearchLoop();
       ESP_LOGI(TAG, "Successfully connected to DCC server at %s:%d", args->ip.c_str(), args->port);
 
       // All LVGL calls must happen on the LVGL task — schedule via lv_async_call.
@@ -419,9 +436,9 @@ bool ConnectDCCScreen::saveSelectedConnection() {
   return true;
 }
 
-// Performs the one-shot boot auto-connect: if WiFi is up, no connection is
-// already in progress and a saved server exists, connects immediately.
-// Returns true if a connection attempt was started.
+// Performs the one-shot boot auto-connect for the main-menu flow: if WiFi is
+// up, no connection is already in progress and a saved server exists,
+// connects immediately. Returns true if a connection attempt was started.
 bool ConnectDCCScreen::maybeAutoConnectSaved() {
   if (isCleanedUp || autoConnectAttempted) {
     return false;

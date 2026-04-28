@@ -206,16 +206,8 @@ void setup() {
       nullptr);
 
   lv_msg_subscribe(
-      MSG_DCC_CONNECTION_SUCCESS,
-      [](lv_msg_t *) {
-        utilities::WifiHandler::instance()->stopMdnsSearchLoop();
-      },
-      nullptr);
-
-  lv_msg_subscribe(
       MSG_DCC_DISCONNECTED,
       [](lv_msg_t *) {
-        utilities::WifiHandler::instance()->startMdnsSearchLoop();
         lv_async_call(
             [](void *) {
               display::showMessageBox("DCC Disconnected", "Connection to the DCC server was lost.",

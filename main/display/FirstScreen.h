@@ -31,6 +31,7 @@ public:
 
   void wifi_connected_callback(lv_msg_t *msg);
   void wifi_not_saved_callback(lv_msg_t *msg);
+  void maybeAutoConnectSavedDccFromMain();
 
 protected:
   FirstScreen() = default;

@@ -45,7 +45,9 @@ void WifiConnectScreen::wifi_connected_callback(lv_msg_t *msg) {
               if (!screen || screen->isCleanedUp)
                 return;
               screen->cleanUp();
-              FirstScreen::instance()->showScreen();
+              auto firstScreen = FirstScreen::instance();
+              firstScreen->showScreen();
+              firstScreen->maybeAutoConnectSavedDccFromMain();
             },
             self);
 
