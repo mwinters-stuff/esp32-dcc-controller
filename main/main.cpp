@@ -37,7 +37,7 @@ static uint32_t lv_tick_ms_cb() { return static_cast<uint32_t>(esp_timer_get_tim
 static lv_display_t *lvgl_disp = nullptr;
 
 // --- Display sleep tracking ---
-static bool displaySleeping = false;
+static std::atomic_bool displaySleeping{false};
 constexpr uint32_t INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
 // --- FADE EFFECT ---
@@ -61,6 +61,20 @@ void display_set_sleep(bool sleep) {
   } else {
     ESP_LOGI(TAG, "Display waking...");
     fade_brightness(0, 255, 600); // fade in
+  }
+}
+
+void wake_display_if_sleeping(lv_display_t *disp) {
+  if (disp == nullptr) {
+    return;
+  }
+
+  if (displaySleeping.load()) {
+    // Reset inactivity before clearing sleep state to avoid immediate re-sleep.
+    lv_display_trigger_activity(disp);
+    if (displaySleeping.exchange(false)) {
+      display_set_sleep(false);
+    }
   }
 }
 
@@ -93,9 +107,8 @@ void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data) {
 
     lv_display_trigger_activity(lvgl_disp); // reset inactivity timer on touch
 
-    if (displaySleeping) {
-      display_set_sleep(false);
-      displaySleeping = false;
+    if (displaySleeping.load()) {
+      wake_display_if_sleeping(lvgl_disp);
       data->state = LV_INDEV_STATE_RELEASED;
     }
   } else {
@@ -165,7 +178,9 @@ void setup() {
       [](void *disp) {
         lv_async_call(
             [](void *d) {
-              lv_display_trigger_activity(static_cast<lv_display_t *>(d));
+              auto *display = static_cast<lv_display_t *>(d);
+              wake_display_if_sleeping(display);
+              lv_display_trigger_activity(display);
             },
             disp);
       },
@@ -250,11 +265,11 @@ extern "C" void app_main() {
     vTaskDelay(pdMS_TO_TICKS(10));
 
     // --- Inactivity check (using LVGL's built-in tracking) ---
-    if (!displaySleeping) {
+    if (!displaySleeping.load()) {
       uint32_t inactive_ms = lv_display_get_inactive_time(lvgl_disp);
       if (inactive_ms > INACTIVITY_TIMEOUT_MS) {
         display_set_sleep(true);
-        displaySleeping = true;
+        displaySleeping.store(true);
       }
     }
   }
