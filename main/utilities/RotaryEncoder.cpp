@@ -39,6 +39,16 @@ void RotaryEncoder::sw_single_click_trampoline(void *button_handle, void *usr_da
   }
 }
 
+// iot_button double-click trampoline: casts usr_data to RotaryEncoder and
+// calls emitDoubleClick().
+void RotaryEncoder::sw_double_click_trampoline(void *button_handle, void *usr_data) {
+  ESP_LOGI(TAG, "SW_DOUBLE_CLICK");
+  auto *self = static_cast<RotaryEncoder *>(usr_data);
+  if (self) {
+    self->emitDoubleClick();
+  }
+}
+
 // iot_button long-press trampoline: casts usr_data to RotaryEncoder and calls
 // emitLongPress().
 void RotaryEncoder::sw_long_press_trampoline(void *button_handle, void *usr_data) {
@@ -115,10 +125,11 @@ void RotaryEncoder::monitor_task_trampoline(void *arg) {
 // Registers rotate, click, long-press and optional process callbacks for the
 // given userData context. Replaces any previously registered set.
 void RotaryEncoder::setCallbacks(RotateCallback rotateCb, ClickCallback clickCb, LongPressCallback longPressCb,
-                                 void *userData) {
+                                 void *userData, DoubleClickCallback doubleClickCb) {
   portENTER_CRITICAL(&callbackMux_);
   rotateCallback_ = rotateCb;
   clickCallback_ = clickCb;
+  doubleClickCallback_ = doubleClickCb;
   longPressCallback_ = longPressCb;
   callbackUserData_ = userData;
   portEXIT_CRITICAL(&callbackMux_);
@@ -131,6 +142,7 @@ void RotaryEncoder::clearCallbacks(void *userData) {
   if (userData == nullptr || callbackUserData_ == userData) {
     rotateCallback_ = nullptr;
     clickCallback_ = nullptr;
+    doubleClickCallback_ = nullptr;
     longPressCallback_ = nullptr;
     callbackUserData_ = nullptr;
   }
@@ -189,6 +201,29 @@ void RotaryEncoder::emitClick() {
   }
   if (clickCb != nullptr) {
     clickCb(userData);
+  }
+}
+
+// Dispatches a double-click event to all registered double-click callbacks,
+// then fires the activity callback.
+void RotaryEncoder::emitDoubleClick() {
+  DoubleClickCallback doubleClickCb = nullptr;
+  void *userData = nullptr;
+  ActivityCallback actCb = nullptr;
+  void *actData = nullptr;
+
+  portENTER_CRITICAL(&callbackMux_);
+  doubleClickCb = doubleClickCallback_;
+  userData = callbackUserData_;
+  actCb = activityCallback_;
+  actData = activityUserData_;
+  portEXIT_CRITICAL(&callbackMux_);
+
+  if (actCb != nullptr) {
+    actCb(actData);
+  }
+  if (doubleClickCb != nullptr) {
+    doubleClickCb(userData);
   }
 }
 
@@ -306,6 +341,8 @@ bool RotaryEncoder::init(gpio_num_t gpioA, gpio_num_t gpioB, bool reverseDirecti
         iot_button_register_cb(buttonHandle, BUTTON_PRESS_UP, nullptr, sw_press_up_cb, nullptr) != ESP_OK ||
         iot_button_register_cb(buttonHandle, BUTTON_SINGLE_CLICK, nullptr, &RotaryEncoder::sw_single_click_trampoline,
                                this) != ESP_OK ||
+        iot_button_register_cb(buttonHandle, BUTTON_DOUBLE_CLICK, nullptr, &RotaryEncoder::sw_double_click_trampoline,
+                               this) != ESP_OK ||
         iot_button_register_cb(buttonHandle, BUTTON_LONG_PRESS_START, nullptr, &RotaryEncoder::sw_long_press_trampoline,
                                this) != ESP_OK) {
       ESP_LOGE(TAG, "Failed to register one or more SW button callbacks");
@@ -339,6 +376,7 @@ void RotaryEncoder::deinit() {
     iot_button_unregister_cb(buttonHandle, BUTTON_PRESS_DOWN, nullptr);
     iot_button_unregister_cb(buttonHandle, BUTTON_PRESS_UP, nullptr);
     iot_button_unregister_cb(buttonHandle, BUTTON_SINGLE_CLICK, nullptr);
+    iot_button_unregister_cb(buttonHandle, BUTTON_DOUBLE_CLICK, nullptr);
     iot_button_unregister_cb(buttonHandle, BUTTON_LONG_PRESS_START, nullptr);
     iot_button_delete(buttonHandle);
     buttonHandle_ = nullptr;

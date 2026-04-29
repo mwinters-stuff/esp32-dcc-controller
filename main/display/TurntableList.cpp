@@ -14,7 +14,6 @@
 #include "WaitingScreen.h"
 #include "connection/wifi_control.h"
 #include "definitions.h"
-#include "utilities/RotaryEncoder.h"
 #include "utilities/WifiHandler.h"
 #include <cstdio>
 #include <memory>
@@ -23,18 +22,6 @@
 namespace display {
 
 static const char *TAG = "Turntable_LIST_SCREEN";
-
-// Draws or clears the focus outline on a turntable list item.
-static void apply_focus_outline(lv_obj_t *obj, bool focused) {
-  if (!obj) {
-    return;
-  }
-
-  lv_obj_set_style_border_width(obj, focused ? 2 : 0, LV_PART_MAIN);
-  lv_obj_set_style_border_opa(obj, focused ? LV_OPA_100 : LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_border_color(obj, lv_color_hex(0x35B6FF), LV_PART_MAIN);
-  lv_obj_set_style_border_side(obj, focused ? LV_BORDER_SIDE_FULL : LV_BORDER_SIDE_NONE, LV_PART_MAIN);
-}
 
 // Builds the turntable list UI, registers rotary callbacks and subscribes to
 // turntable updated / move messages.
@@ -80,9 +67,7 @@ void TurntableListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScr
       this);
 
   refreshList();
-  utilities::RotaryEncoder::instance()->setCallbacks(&TurntableListScreen::rotary_rotate_trampoline,
-                                                     &TurntableListScreen::rotary_click_trampoline,
-                                                     &TurntableListScreen::rotary_long_press_trampoline, this);
+  rotaryAttach();
 }
 
 // Clears and repopulates the list widget from the latest turntable data.
@@ -149,8 +134,7 @@ void TurntableListScreen::cleanUp() {
   btn_back = nullptr;
   currentButton = nullptr;
   focusedIndex = -1;
-  pendingRotateSteps.store(0, std::memory_order_relaxed);
-  utilities::RotaryEncoder::instance()->clearCallbacks(this);
+  rotaryDetach();
   lv_obj_clean(lvObj_);
 }
 
@@ -235,11 +219,11 @@ void TurntableListScreen::updateFocusedState() {
     }
     if (static_cast<int>(i) == focusedIndex) {
       lv_obj_add_state(obj, LV_STATE_FOCUSED);
-      apply_focus_outline(obj, true);
+      applyFocusOutline(obj, true);
       lv_obj_scroll_to_view(obj, LV_ANIM_OFF);
     } else {
       lv_obj_clear_state(obj, LV_STATE_FOCUSED);
-      apply_focus_outline(obj, false);
+      applyFocusOutline(obj, false);
     }
   }
 }
@@ -281,83 +265,6 @@ void TurntableListScreen::activateFocused() {
   auto item = listItems[focusedIndex];
   if (item) {
     activateItem(item->getLvObj());
-  }
-}
-
-// Returns to the previous screen via the standard back path.
-void TurntableListScreen::goBack() {
-  if (isCleanedUp) {
-    return;
-  }
-  if (auto screen = parentScreen_.lock()) {
-    cleanUp();
-    screen->showScreen();
-  }
-}
-
-// Drains the pending rotation count and moves focus accordingly.
-void TurntableListScreen::processPendingRotate() {
-  int32_t steps = pendingRotateSteps.exchange(0, std::memory_order_relaxed);
-  while (steps > 0) {
-    moveFocus(1);
-    --steps;
-  }
-  while (steps < 0) {
-    moveFocus(-1);
-    ++steps;
-  }
-}
-
-// Rotary encoder rotate ISR trampoline: accumulates delta into pendingRotate.
-void TurntableListScreen::rotary_rotate_trampoline(int32_t delta, void *userData) {
-  auto *self = static_cast<TurntableListScreen *>(userData);
-  if (!self || self->isCleanedUp) {
-    return;
-  }
-
-  self->pendingRotateSteps.fetch_add(delta, std::memory_order_relaxed);
-  lv_async_call(&TurntableListScreen::rotary_process_trampoline, self);
-}
-
-// Rotary encoder click trampoline: activates the focused turntable index.
-void TurntableListScreen::rotary_click_trampoline(void *userData) {
-  auto *self = static_cast<TurntableListScreen *>(userData);
-  if (!self || self->isCleanedUp) {
-    return;
-  }
-
-  lv_async_call(
-      [](void *ctx) {
-        auto *screen = static_cast<TurntableListScreen *>(ctx);
-        if (screen && !screen->isCleanedUp) {
-          screen->activateFocused();
-        }
-      },
-      self);
-}
-
-// Rotary encoder long-press trampoline: navigates back.
-void TurntableListScreen::rotary_long_press_trampoline(void *userData) {
-  auto *self = static_cast<TurntableListScreen *>(userData);
-  if (!self || self->isCleanedUp) {
-    return;
-  }
-
-  lv_async_call(
-      [](void *ctx) {
-        auto *screen = static_cast<TurntableListScreen *>(ctx);
-        if (screen && !screen->isCleanedUp) {
-          screen->goBack();
-        }
-      },
-      self);
-}
-
-// LVGL async trampoline that flushes pending rotate events on the LVGL thread.
-void TurntableListScreen::rotary_process_trampoline(void *userData) {
-  auto *self = static_cast<TurntableListScreen *>(userData);
-  if (self && !self->isCleanedUp) {
-    self->processPendingRotate();
   }
 }
 

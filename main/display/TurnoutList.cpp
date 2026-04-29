@@ -14,7 +14,6 @@
 #include "WaitingScreen.h"
 #include "connection/wifi_control.h"
 #include "definitions.h"
-#include "utilities/RotaryEncoder.h"
 #include "utilities/WifiHandler.h"
 #include <memory>
 #include <vector>
@@ -22,18 +21,6 @@
 namespace display {
 
 static const char *TAG = "TURNOUT_LIST_SCREEN";
-
-// Draws or clears the focus outline on a turnout list item.
-static void apply_focus_outline(lv_obj_t *obj, bool focused) {
-  if (!obj) {
-    return;
-  }
-
-  lv_obj_set_style_border_width(obj, focused ? 2 : 0, LV_PART_MAIN);
-  lv_obj_set_style_border_opa(obj, focused ? LV_OPA_100 : LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_border_color(obj, lv_color_hex(0x35B6FF), LV_PART_MAIN);
-  lv_obj_set_style_border_side(obj, focused ? LV_BORDER_SIDE_FULL : LV_BORDER_SIDE_NONE, LV_PART_MAIN);
-}
 
 // Builds the turnout list UI, registers rotary callbacks and subscribes to
 // turnout updated / thrown-state messages.
@@ -73,9 +60,7 @@ void TurnoutListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScree
       this);
 
   refreshList();
-  utilities::RotaryEncoder::instance()->setCallbacks(&TurnoutListScreen::rotary_rotate_trampoline,
-                                                     &TurnoutListScreen::rotary_click_trampoline,
-                                                     &TurnoutListScreen::rotary_long_press_trampoline, this);
+  rotaryAttach();
 }
 
 // Clears and repopulates the list widget from the latest turnout data.
@@ -129,8 +114,7 @@ void TurnoutListScreen::cleanUp() {
   btn_back = nullptr;
   currentButton = nullptr;
   focusedIndex = -1;
-  pendingRotateSteps.store(0, std::memory_order_relaxed);
-  utilities::RotaryEncoder::instance()->clearCallbacks(this);
+  rotaryDetach();
   lv_obj_clean(lvObj_);
 }
 
@@ -187,11 +171,11 @@ void TurnoutListScreen::updateFocusedState() {
     }
     if (static_cast<int>(i) == focusedIndex) {
       lv_obj_add_state(obj, LV_STATE_FOCUSED);
-      apply_focus_outline(obj, true);
+      applyFocusOutline(obj, true);
       lv_obj_scroll_to_view(obj, LV_ANIM_OFF);
     } else {
       lv_obj_clear_state(obj, LV_STATE_FOCUSED);
-      apply_focus_outline(obj, false);
+      applyFocusOutline(obj, false);
     }
   }
 }
@@ -225,83 +209,6 @@ void TurnoutListScreen::activateFocused() {
   auto item = listItems[focusedIndex];
   if (item) {
     throwTurnout(item, !item->isThrown());
-  }
-}
-
-// Returns to the previous screen via the standard back path.
-void TurnoutListScreen::goBack() {
-  if (isCleanedUp) {
-    return;
-  }
-  if (auto screen = parentScreen_.lock()) {
-    cleanUp();
-    screen->showScreen();
-  }
-}
-
-// Drains the pending rotation count and moves focus accordingly.
-void TurnoutListScreen::processPendingRotate() {
-  int32_t steps = pendingRotateSteps.exchange(0, std::memory_order_relaxed);
-  while (steps > 0) {
-    moveFocus(1);
-    --steps;
-  }
-  while (steps < 0) {
-    moveFocus(-1);
-    ++steps;
-  }
-}
-
-// Rotary encoder rotate ISR trampoline: accumulates delta into pendingRotate.
-void TurnoutListScreen::rotary_rotate_trampoline(int32_t delta, void *userData) {
-  auto *self = static_cast<TurnoutListScreen *>(userData);
-  if (!self || self->isCleanedUp) {
-    return;
-  }
-
-  self->pendingRotateSteps.fetch_add(delta, std::memory_order_relaxed);
-  lv_async_call(&TurnoutListScreen::rotary_process_trampoline, self);
-}
-
-// Rotary encoder click trampoline: activates the focused turnout.
-void TurnoutListScreen::rotary_click_trampoline(void *userData) {
-  auto *self = static_cast<TurnoutListScreen *>(userData);
-  if (!self || self->isCleanedUp) {
-    return;
-  }
-
-  lv_async_call(
-      [](void *ctx) {
-        auto *screen = static_cast<TurnoutListScreen *>(ctx);
-        if (screen && !screen->isCleanedUp) {
-          screen->activateFocused();
-        }
-      },
-      self);
-}
-
-// Rotary encoder long-press trampoline: navigates back.
-void TurnoutListScreen::rotary_long_press_trampoline(void *userData) {
-  auto *self = static_cast<TurnoutListScreen *>(userData);
-  if (!self || self->isCleanedUp) {
-    return;
-  }
-
-  lv_async_call(
-      [](void *ctx) {
-        auto *screen = static_cast<TurnoutListScreen *>(ctx);
-        if (screen && !screen->isCleanedUp) {
-          screen->goBack();
-        }
-      },
-      self);
-}
-
-// LVGL async trampoline that flushes pending rotate events on the LVGL thread.
-void TurnoutListScreen::rotary_process_trampoline(void *userData) {
-  auto *self = static_cast<TurnoutListScreen *>(userData);
-  if (self && !self->isCleanedUp) {
-    self->processPendingRotate();
   }
 }
 

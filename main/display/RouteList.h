@@ -1,12 +1,11 @@
 #pragma once
-#include "Screen.h"
-#include <atomic>
+#include "RotaryListScreenBase.h"
 #include <memory>
 
 #include "RouteListItem.h"
 
 namespace display {
-class RouteListScreen : public Screen, public std::enable_shared_from_this<RouteListScreen> {
+class RouteListScreen : public RotaryListScreenBase, public std::enable_shared_from_this<RouteListScreen> {
 public:
   static std::shared_ptr<RouteListScreen> instance() {
     static std::shared_ptr<RouteListScreen> s;
@@ -33,22 +32,18 @@ private:
   std::vector<std::shared_ptr<RouteListItem>> listItems;
   int focusedIndex = -1;
   int selectedRouteId = -1;
-  std::atomic<int32_t> pendingRotateSteps{0};
+
+  bool rotaryInputEnabled() const override { return !isCleanedUp; }
+  void rotaryMoveFocus(int direction) override { moveFocus(direction); }
+  void rotaryActivateFocused() override { activateFocused(); }
 
   void updateFocusedState();
   void moveFocus(int direction);
   void activateFocused();
-  void goBack();
-  void processPendingRotate();
   void startRoute(std::shared_ptr<RouteListItem> item);
   void updateSelectedState();
   void updatePauseResumeButton();
   void setStatusText(const char *text);
-
-  static void rotary_rotate_trampoline(int32_t delta, void *userData);
-  static void rotary_click_trampoline(void *userData);
-  static void rotary_long_press_trampoline(void *userData);
-  static void rotary_process_trampoline(void *userData);
 
   bool isCleanedUp = false;
   bool routesPaused = false;

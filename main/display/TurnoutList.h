@@ -1,12 +1,11 @@
 #pragma once
-#include "Screen.h"
-#include <atomic>
+#include "RotaryListScreenBase.h"
 #include <memory>
 
 #include "TurnoutListItem.h"
 
 namespace display {
-class TurnoutListScreen : public Screen, public std::enable_shared_from_this<TurnoutListScreen> {
+class TurnoutListScreen : public RotaryListScreenBase, public std::enable_shared_from_this<TurnoutListScreen> {
 public:
   static std::shared_ptr<TurnoutListScreen> instance() {
     static std::shared_ptr<TurnoutListScreen> s;
@@ -31,18 +30,15 @@ public:
 private:
   std::vector<std::shared_ptr<TurnoutListItem>> listItems;
   int focusedIndex = -1;
-  std::atomic<int32_t> pendingRotateSteps{0};
+
+  bool rotaryInputEnabled() const override { return !isCleanedUp; }
+  void rotaryMoveFocus(int direction) override { moveFocus(direction); }
+  void rotaryActivateFocused() override { activateFocused(); }
   void throwTurnout(std::shared_ptr<TurnoutListItem> item, bool newThrownState);
   std::shared_ptr<TurnoutListItem> getItemByTurnoutId(int turnoutId);
   void updateFocusedState();
   void moveFocus(int direction);
   void activateFocused();
-  void goBack();
-  void processPendingRotate();
-  static void rotary_rotate_trampoline(int32_t delta, void *userData);
-  static void rotary_click_trampoline(void *userData);
-  static void rotary_long_press_trampoline(void *userData);
-  static void rotary_process_trampoline(void *userData);
 
   lv_msg_sub_dsc_t *turnout_changed_sub = nullptr;
 

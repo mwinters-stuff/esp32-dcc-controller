@@ -1,5 +1,5 @@
 #pragma once
-#include "Screen.h"
+#include "RotaryListScreenBase.h"
 #include <memory>
 
 #include "DCCConnectListItem.h"
@@ -7,7 +7,7 @@
 namespace display {
 class WaitingScreen;
 
-class ConnectDCCScreen : public Screen, public std::enable_shared_from_this<ConnectDCCScreen> {
+class ConnectDCCScreen : public RotaryListScreenBase, public std::enable_shared_from_this<ConnectDCCScreen> {
 public:
   static std::shared_ptr<ConnectDCCScreen> instance() {
     static std::shared_ptr<ConnectDCCScreen> s;
@@ -52,6 +52,16 @@ private:
 
   static bool bootAutoConnectHandled;
 
+  bool rotaryInputEnabled() const override { return !isCleanedUp; }
+  void rotaryMoveFocus(int direction) override;
+  void rotaryActivateFocused() override;
+  void rotaryHandleDoubleClick() override;
+
+  void moveFocus(int direction);
+  void updateFocusedState();
+  void removeSavedConnection();
+
+  int focusedIndex = -1;
   bool isCleanedUp = false;
   bool autoConnectAttempted = false;
   lv_obj_t *lbl_title = nullptr;

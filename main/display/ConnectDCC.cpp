@@ -120,6 +120,9 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
   } else {
     ESP_LOGW(TAG, "WiFi is not connected; skipping mDNS search loop start");
   }
+
+  focusedIndex = -1;
+  rotaryAttach();
 }
 
 // Reads the saved DCC server details from NVS into outDevice.
@@ -182,35 +185,73 @@ void ConnectDCCScreen::refreshMdnsList() {
   // Always include the saved DCC entry in this list. If mDNS later discovers the
   // same endpoint, DCCConnectListItem::matches() prevents duplicates.
   utilities::WithrottleDevice savedDevice;
-  if (loadSavedConnection(savedDevice)) {
+  const bool hasSavedDevice = loadSavedConnection(savedDevice);
+  if (hasSavedDevice) {
     devices.insert(devices.begin(), savedDevice);
   }
 
-  ESP_LOGI(TAG, "Refreshing mDNS list, found %d devices", devices.size());
+  // Preserve the currently selected endpoint (if any) across a list rebuild.
+  std::string selectedIp;
+  uint16_t selectedPort = 0;
+  if (currentButton) {
+    auto selectedItem = getItem(currentButton);
+    if (selectedItem) {
+      selectedIp = selectedItem->device().ip;
+      selectedPort = selectedItem->device().port;
+    }
+  }
 
+  // Dedupe by endpoint (ip+port), preserving order so a saved entry inserted at
+  // the front remains first.
+  std::vector<utilities::WithrottleDevice> uniqueDevices;
+  uniqueDevices.reserve(devices.size());
   for (const auto &device : devices) {
-    if (isCleanedUp)
-      return;
-    bool found = false;
-    for (auto &item : detectedListItems) {
-      if (isCleanedUp)
-        return;
-      if (item->matches(device)) {
-        found = true;
-        if (!item->isSame(device)) {
-          item->update(device);
-          ESP_LOGI(TAG, "Updated device: %s", device.instance.c_str());
-        }
+    bool duplicate = false;
+    for (const auto &existing : uniqueDevices) {
+      if (existing.ip == device.ip && existing.port == device.port) {
+        duplicate = true;
         break;
       }
     }
-    if (!found) {
-      ESP_LOGI(TAG, "Adding new device: %s", device.instance.c_str());
-      const bool isSaved = !savedDevice.ip.empty() && savedDevice.ip == device.ip && savedDevice.port == device.port;
-      auto listItem = std::make_shared<DCCConnectListItem>(list_auto, detectedListItems.size(), device, isSaved);
-      detectedListItems.push_back(listItem);
+    if (!duplicate) {
+      uniqueDevices.push_back(device);
     }
   }
+
+  ESP_LOGI(TAG, "Refreshing mDNS list, found %d devices", uniqueDevices.size());
+
+  detectedListItems.clear();
+  lv_obj_clean(list_auto);
+  currentButton = nullptr;
+
+  for (const auto &device : uniqueDevices) {
+    const bool isSaved = hasSavedDevice && savedDevice.ip == device.ip && savedDevice.port == device.port;
+    auto listItem = std::make_shared<DCCConnectListItem>(list_auto, detectedListItems.size(), device, isSaved);
+    detectedListItems.push_back(listItem);
+
+    if (!selectedIp.empty() && device.ip == selectedIp && device.port == selectedPort) {
+      currentButton = listItem->getLvObj();
+    }
+  }
+
+  if (currentButton) {
+    lv_obj_add_state(currentButton, LV_STATE_CHECKED);
+  }
+
+  if (btn_connect) {
+    if (currentButton) {
+      lv_obj_clear_state(btn_connect, LV_STATE_DISABLED);
+    } else {
+      lv_obj_add_state(btn_connect, LV_STATE_DISABLED);
+    }
+  }
+
+  const int totalFocusable = static_cast<int>(detectedListItems.size()) + 3;
+  if (focusedIndex < 0 || focusedIndex >= totalFocusable) {
+    focusedIndex = 0;
+  }
+
+  updateFocusedState();
 }
 
 // Unsubscribes all lv_msg subscriptions created during show(). Called when
@@ -239,6 +280,7 @@ void ConnectDCCScreen::resetMsgHandlers() {
 void ConnectDCCScreen::cleanUp() {
   ESP_LOGI(TAG, "Cleaning up ConnectDCCScreen");
   isCleanedUp = true;
+  rotaryDetach();
   stop_mdns_search_async();
   resetMsgHandlers();
   detectedListItems.clear();
@@ -252,6 +294,7 @@ void ConnectDCCScreen::cleanUp() {
   btn_connect = nullptr;
   currentButton = nullptr;
   savedListItem = nullptr;
+  focusedIndex = -1;
   waitingScreen_.reset();
 }
 
@@ -433,6 +476,10 @@ bool ConnectDCCScreen::saveSelectedConnection() {
 
   savedListItem = currentItem;
   ESP_LOGI(TAG, "Saved DCC connection %s:%d", device.ip.c_str(), device.port);
+
+  // Rebuild list so saved-icon state updates immediately.
+  refreshMdnsList();
+
   return true;
 }
 
@@ -529,6 +576,169 @@ void ConnectDCCScreen::button_listitem_click_event_callback(lv_event_t *e) {
       }
     }
   }
+}
+
+// Moves rotary focus by `direction` steps through list items and the three
+// bottom buttons (Back, Save, Connect).
+void ConnectDCCScreen::moveFocus(int direction) {
+  if (isCleanedUp || direction == 0) {
+    return;
+  }
+
+  const int total = static_cast<int>(detectedListItems.size()) + 3; // Back, Save, Connect
+  if (total == 3 && detectedListItems.empty()) {
+    // No list items yet — still allow cycling through buttons
+  }
+
+  int idx = focusedIndex;
+  if (idx < 0 || idx >= total) {
+    idx = 0;
+  } else {
+    idx = (idx + direction) % total;
+    if (idx < 0) {
+      idx += total;
+    }
+  }
+
+  focusedIndex = idx;
+  updateFocusedState();
+}
+
+// Applies focus outlines to the focused item/button; clears all others.
+// Does NOT change CHECKED/selection state — that is owned by rotaryActivateFocused
+// and the touch click handler.
+void ConnectDCCScreen::updateFocusedState() {
+  const int listSize = static_cast<int>(detectedListItems.size());
+
+  for (int i = 0; i < listSize; ++i) {
+    auto obj = detectedListItems[i]->getLvObj();
+    if (!obj) {
+      continue;
+    }
+    applyFocusOutline(obj, i == focusedIndex);
+    if (i == focusedIndex) {
+      lv_obj_scroll_to_view(obj, LV_ANIM_OFF);
+    }
+  }
+
+  applyFocusOutline(btn_back, focusedIndex == listSize);
+  applyFocusOutline(btn_save, focusedIndex == listSize + 1);
+  applyFocusOutline(btn_connect, focusedIndex == listSize + 2);
+}
+
+void ConnectDCCScreen::rotaryMoveFocus(int direction) { moveFocus(direction); }
+
+// Single click: select the focused list item (mirrors touch-tap selection), or
+// fire the focused button.
+void ConnectDCCScreen::rotaryActivateFocused() {
+  if (isCleanedUp || focusedIndex < 0) {
+    return;
+  }
+
+  const int listSize = static_cast<int>(detectedListItems.size());
+
+  if (focusedIndex < listSize) {
+    // Toggle selection on the focused list item
+    auto obj = detectedListItems[focusedIndex]->getLvObj();
+    if (!obj) {
+      return;
+    }
+    if (currentButton == obj) {
+      currentButton = nullptr;
+    } else {
+      currentButton = obj;
+    }
+    for (int i = 0; i < listSize; ++i) {
+      auto itemObj = detectedListItems[i]->getLvObj();
+      if (!itemObj) {
+        continue;
+      }
+      if (itemObj == currentButton) {
+        lv_obj_add_state(itemObj, LV_STATE_CHECKED);
+      } else {
+        lv_obj_clear_state(itemObj, LV_STATE_CHECKED);
+      }
+    }
+    if (btn_connect) {
+      if (currentButton) {
+        lv_obj_clear_state(btn_connect, LV_STATE_DISABLED);
+      } else {
+        lv_obj_add_state(btn_connect, LV_STATE_DISABLED);
+      }
+    }
+  } else if (focusedIndex == listSize && btn_back) {
+    lv_obj_send_event(btn_back, LV_EVENT_CLICKED, nullptr);
+  } else if (focusedIndex == listSize + 1 && btn_save) {
+    lv_obj_send_event(btn_save, LV_EVENT_CLICKED, nullptr);
+  } else if (focusedIndex == listSize + 2 && btn_connect) {
+    lv_obj_send_event(btn_connect, LV_EVENT_CLICKED, nullptr);
+  }
+}
+
+// On double-click: if the focused item matches the saved connection, prompt to
+// remove it. Otherwise, silently ignore.
+void ConnectDCCScreen::rotaryHandleDoubleClick() {
+  if (isCleanedUp) {
+    return;
+  }
+
+  utilities::WithrottleDevice savedDevice;
+  if (!loadSavedConnection(savedDevice)) {
+    return;
+  }
+
+  // Determine which item to check: focused (rotary) or touch-selected.
+  std::shared_ptr<DCCConnectListItem> target;
+  if (focusedIndex >= 0 && focusedIndex < static_cast<int>(detectedListItems.size())) {
+    target = detectedListItems[focusedIndex];
+  } else if (currentButton) {
+    target = getItem(currentButton);
+  }
+
+  if (!target) {
+    return;
+  }
+
+  const auto &dev = target->device();
+  if (dev.ip != savedDevice.ip || dev.port != savedDevice.port) {
+    return;
+  }
+
+  display::showMessageBox(
+      "Remove Saved",
+      ("Remove saved DCC connection?\n" + dev.instance + " (" + dev.ip + ":" + std::to_string(dev.port) + ")").c_str(),
+      display::MessageBoxState::Warning,
+      [](void *ctx) {
+        auto *self = static_cast<ConnectDCCScreen *>(ctx);
+        if (self) {
+          self->removeSavedConnection();
+        }
+      },
+      this);
+}
+
+// Clears the saved DCC entry from NVS and refreshes the list display.
+void ConnectDCCScreen::removeSavedConnection() {
+  esp_err_t err = ESP_OK;
+  std::unique_ptr<nvs::NVSHandle> handle = nvs::open_nvs_handle(NVS_NAMESPACE_DCC, NVS_READWRITE, &err);
+  if (err != ESP_OK || !handle) {
+    ESP_LOGE(TAG, "nvs_open for DCC remove failed: %s", esp_err_to_name(err));
+    return;
+  }
+  handle->erase_item(NVS_DCC_SAVED);
+  handle->erase_item(NVS_DCC_IP);
+  handle->erase_item(NVS_DCC_PORT);
+  handle->erase_item(NVS_DCC_INSTANCE);
+  handle->erase_item(NVS_DCC_HOSTNAME);
+  handle->commit();
+  ESP_LOGI(TAG, "Saved DCC connection removed");
+  savedListItem = nullptr;
+  currentButton = nullptr;
+  focusedIndex = -1;
+  refreshMdnsList();
+  updateFocusedState();
+  display::showMessageBox("Removed", "Saved DCC connection removed.", display::MessageBoxState::Success, nullptr,
+                          nullptr);
 }
 
 // Returns the DCCConnectListItem whose LVGL button matches bn, or nullptr.
