@@ -82,6 +82,7 @@ void WifiHandler::wifi_event_handler(void *arg, esp_event_base_t event_base, int
   ESP_LOGI(TAG, "WifiEventHandler: event_base=%s, event_id=%d", event_base, event_id);
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
     ESP_LOGI(TAG, "WifiEventHandler: WIFI_EVENT_STA_DISCONNECTED");
+    self->connected = false;
     xEventGroupSetBits(wifi_event_group, WIFI_FAIL_BIT);
 
     if (!self->manualConnectInProgress) {
@@ -97,6 +98,7 @@ void WifiHandler::wifi_event_handler(void *arg, esp_event_base_t event_base, int
     }
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     ESP_LOGI(TAG, "WifiEventHandler: IP_EVENT_STA_GOT_IP");
+    self->connected = true;
     xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
     lv_async_call(
         [](void *) {

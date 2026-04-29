@@ -23,12 +23,55 @@
 namespace display {
 static const char *TAG = "DCC_MENU_SCREEN";
 
+namespace {
+constexpr uint32_t STATUS_HIDE_DELAY_MS = 20000;
+}
+
 // Stores the IP, port and display name of the server we just connected to.
 // Called by ConnectDCCScreen before showing this screen.
 void DCCMenu::setConnectedServer(std::string ip, int port, std::string dccname) {
   this->ip = ip;
   this->port = port;
   this->dccname = dccname;
+}
+
+// Ensures a one-shot timer exists that hides the status label when it fires.
+void DCCMenu::ensureStatusHideTimer() {
+  if (statusHideTimer != nullptr) {
+    return;
+  }
+
+  statusHideTimer = lv_timer_create(
+      [](lv_timer_t *timer) {
+        auto *self = static_cast<DCCMenu *>(lv_timer_get_user_data(timer));
+        if (!self || self->isCleanedUp || !self->lbl_status) {
+          return;
+        }
+        lv_obj_add_flag(self->lbl_status, LV_OBJ_FLAG_HIDDEN);
+      },
+      STATUS_HIDE_DELAY_MS, this);
+}
+
+// Updates the status text, makes it visible and hides it again after 20s if
+// the text is not updated.
+void DCCMenu::setStatusText(const char *text) {
+  if (!lbl_status || text == nullptr) {
+    return;
+  }
+
+  std::string newText = text;
+  if (newText == lastStatusText) {
+    return;
+  }
+
+  lastStatusText = newText;
+  lv_label_set_text(lbl_status, text);
+  lv_obj_clear_flag(lbl_status, LV_OBJ_FLAG_HIDDEN);
+
+  ensureStatusHideTimer();
+  if (statusHideTimer) {
+    lv_timer_reset(statusHideTimer);
+  }
 }
 
 // Clears the disabled state on all four category buttons (Roster, Turnouts,
@@ -65,6 +108,7 @@ void DCCMenu::disableButtons() {
 void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   // Title Label
   isCleanedUp = false;
+  lastStatusText.clear();
   lv_obj_clean(lv_screen_active());
   lvObj_ = lv_screen_active();
 
@@ -107,8 +151,7 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
         if (!self || self->isCleanedUp)
           return;
         ESP_LOGI(TAG, "DCC Roster list received message");
-        if (self->lbl_status)
-          lv_label_set_text(self->lbl_status, "Roster list received.");
+        self->setStatusText("Roster list received.");
         if (self->btn_roster)
           lv_obj_clear_state(self->btn_roster, LV_STATE_DISABLED);
       },
@@ -120,8 +163,7 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
         if (!self || self->isCleanedUp)
           return;
         ESP_LOGI(TAG, "DCC Turnout list received message");
-        if (self->lbl_status)
-          lv_label_set_text(self->lbl_status, "Turnout list received.");
+        self->setStatusText("Turnout list received.");
         if (self->btn_turnouts)
           lv_obj_clear_state(self->btn_turnouts, LV_STATE_DISABLED);
       },
@@ -134,8 +176,7 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
         if (!self || self->isCleanedUp)
           return;
         ESP_LOGI(TAG, "DCC Route list received message");
-        if (self->lbl_status)
-          lv_label_set_text(self->lbl_status, "Route list received.");
+        self->setStatusText("Route list received.");
         if (self->btn_routes)
           lv_obj_clear_state(self->btn_routes, LV_STATE_DISABLED);
       },
@@ -147,8 +188,7 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
         if (!self || self->isCleanedUp)
           return;
         ESP_LOGI(TAG, "DCC Turntable list received message");
-        if (self->lbl_status)
-          lv_label_set_text(self->lbl_status, "Turntable list received.");
+        self->setStatusText("Turntable list received.");
         if (self->btn_turntables)
           lv_obj_clear_state(self->btn_turntables, LV_STATE_DISABLED);
       },
@@ -181,6 +221,7 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   // Status labels under the last button
   // Show connection state and IP (IP empty when disconnected)
   lbl_status = makeLabel(lvObj_, "", LV_ALIGN_TOP_MID, 0, 40, "label.main");
+  ensureStatusHideTimer();
 
   enableIfReceivedLists();
 
@@ -245,8 +286,18 @@ void DCCMenu::unsubscribeAll() {
 // Tears down the screen: unsubscribes all messages, clears LVGL objects and
 // nulls every widget pointer. Sets isCleanedUp so in-flight callbacks no-op.
 void DCCMenu::cleanUp() {
+  if (isCleanedUp) {
+    return;
+  }
+
   ESP_LOGI(TAG, "DCCMenu cleaned up");
   isCleanedUp = true;
+
+  if (statusHideTimer != nullptr) {
+    lv_timer_delete(statusHideTimer);
+    statusHideTimer = nullptr;
+  }
+
   unsubscribeAll();
   lv_obj_clean(lvObj_);
   btn_roster = nullptr;
@@ -319,8 +370,7 @@ void DCCMenu::button_refresh_callback(lv_event_t *e) {
       return;
     }
     dccProtocol->refreshAllLists();
-    if (lbl_status)
-      lv_label_set_text(lbl_status, "Refreshing lists...");
+    setStatusText("Refreshing lists...");
   }
 }
 

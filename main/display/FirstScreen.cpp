@@ -30,23 +30,19 @@ void FirstScreen::maybeAutoConnectSavedDccFromMain() {
     return;
 
   if (display::ConnectDCCScreen::isBootAutoConnectHandled()) {
+    ESP_LOGI(TAG, "Skipping boot DCC auto-connect: already handled");
     return;
   }
 
   auto wifiHandler = utilities::WifiHandler::instance();
   if (!wifiHandler->isConnected()) {
-    return;
-  }
-
-  auto wifiControl = utilities::WifiControl::instance();
-  if (wifiControl->connectionState() == utilities::WifiControl::CONNECTING ||
-      wifiControl->connectionState() == utilities::WifiControl::CONNECTED) {
-    display::ConnectDCCScreen::markBootAutoConnectHandled();
+    ESP_LOGI(TAG, "Skipping boot DCC auto-connect: WiFi not connected");
     return;
   }
 
   utilities::WithrottleDevice savedDevice;
   if (!display::ConnectDCCScreen::loadSavedConnection(savedDevice)) {
+    ESP_LOGI(TAG, "Skipping boot DCC auto-connect: no saved DCC connection");
     display::ConnectDCCScreen::markBootAutoConnectHandled();
     return;
   }

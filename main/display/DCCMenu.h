@@ -83,6 +83,8 @@ protected:
   }
 
   void enableIfReceivedLists();
+  void setStatusText(const char *text);
+  void ensureStatusHideTimer();
 
 private:
   lv_msg_sub_dsc_t *subscribe_dcc_roster_received = nullptr;
@@ -96,6 +98,8 @@ private:
   std::string dccname;
 
   bool isCleanedUp = false;
+  lv_timer_t *statusHideTimer = nullptr;
+  std::string lastStatusText;
   lv_obj_t *lbl_title;
   lv_obj_t *btn_roster;
   lv_obj_t *btn_turnouts;
