@@ -26,19 +26,47 @@ private:
   uint64_t heartbeat_sent_time = 0;
   bool awaiting_heartbeat = false;
 
+  static void enqueue_fail_err(err_t fail_err) {
+    // Never block from lwIP callback context.
+    if (tcp_fail_queue) {
+      xQueueSendToBack(tcp_fail_queue, &fail_err, 0);
+    }
+  }
+
+  static void err_callback(void *arg, err_t err) {
+    TCPSocketStream *stream = static_cast<TCPSocketStream *>(arg);
+    if (!stream) {
+      return;
+    }
+
+    stream->pcb = nullptr;
+    stream->failed = true;
+    stream->err = err;
+    enqueue_fail_err(err);
+  }
+
   static err_t recv_callback(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err) {
     TCPSocketStream *stream = static_cast<TCPSocketStream *>(arg);
     if (p == nullptr) {
-      // Connection closed
+      // Connection closed by peer.
       printf("Connection closed by remote host\n");
+      // Deregister all callbacks and close the PCB before we lose our
+      // reference.  Without this the PCB stays alive in lwIP with arg
+      // pointing to 'stream'; if the heap reuses that address for a new
+      // TCPSocketStream, lwIP can later fire err_callback on the new
+      // stream and null its pcb mid-write, causing a LoadProhibited crash.
+      tcp_arg(tpcb, nullptr);
+      tcp_recv(tpcb, nullptr);
+      tcp_err(tpcb, nullptr);
       tcp_close(tpcb);
       stream->pcb = nullptr;
-      pbuf_free(p);
       stream->failed = true;
       stream->err = err;
-      // Notify main core of TCP failure
-      xQueueSendToBack(tcp_fail_queue, &stream->err, portMAX_DELAY);
-      return ERR_ABRT;
+      if (stream->err == ERR_OK) {
+        stream->err = static_cast<err_t>(ERR_CLSD);
+      }
+      enqueue_fail_err(stream->err);
+      return ERR_OK;
     }
     if (err == ERR_OK) {
       if (stream->recv_buffer == nullptr) {
@@ -62,6 +90,7 @@ public:
 
     tcp_recv(pcb, recv_callback);
     tcp_arg(pcb, this);
+    tcp_err(pcb, err_callback);
 
     // Enable keepalive
     pcb->keep_idle = 5000;  // ms
@@ -98,8 +127,24 @@ public:
       return -1; // Already failed
     }
     LOCK_TCPIP_CORE();
+    if (pcb == nullptr) {
+      UNLOCK_TCPIP_CORE();
+      failed = true;
+      err_t closed_err = ERR_CLSD;
+      enqueue_fail_err(closed_err);
+      return -1;
+    }
     err_t err = tcp_write(pcb, buffer, size, TCP_WRITE_FLAG_COPY);
     if (err == ERR_OK) {
+      // tcp_write can internally abort the PCB (e.g. on a MEM error) and
+      // synchronously fire err_callback, which sets pcb = nullptr.  Recheck
+      // before calling tcp_output to avoid a LoadProhibited on a null pcb.
+      if (pcb == nullptr) {
+        UNLOCK_TCPIP_CORE();
+        failed = true;
+        enqueue_fail_err(ERR_CLSD);
+        return -1;
+      }
       tcp_output(pcb);
       UNLOCK_TCPIP_CORE();
       return size;
@@ -108,7 +153,7 @@ public:
     printf("Error writing to TCP socket: %d\n", err);
     failed = true;
     // Notify main core of TCP failure
-    xQueueSendToBack(tcp_fail_queue, &err, portMAX_DELAY);
+    enqueue_fail_err(err);
     return err; // Error
   }
 
@@ -170,7 +215,7 @@ public:
         printf("Heartbeat timeout\n");
         awaiting_heartbeat = false;
         err_t timeout_err = ERR_TIMEOUT;
-        xQueueSendToBack(tcp_fail_queue, &timeout_err, portMAX_DELAY);
+        enqueue_fail_err(timeout_err);
       }
     }
   }

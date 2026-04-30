@@ -207,20 +207,37 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
   LOCK_TCPIP_CORE();
   ESP_LOGI(TAG, "Connected to server: %s:%d\n", ipaddr_ntoa(&pcb->remote_ip), pcb->remote_port);
   // TCPSocketStream constructor calls tcp_recv/tcp_arg — must stay inside the lock
-  stream = new TCPSocketStream(pcb);
+  auto *newStream = new TCPSocketStream(pcb);
   UNLOCK_TCPIP_CORE();
 
-  logStream = new LoggingStream(nullptr);
+  // Build the protocol fully in local variables first.  If we assigned
+  // dccExProtocol before calling connect(stream), wifi_loop_task could pick
+  // up the non-null pointer and call check() on a protocol that has no stream
+  // yet, leading to a null-stream write crash.
+  auto *newLogStream = new LoggingStream(nullptr);
+  auto newProtocol = std::make_shared<DCCExController::DCCEXProtocol>(dccMillis, 600);
+  newProtocol->setLogStream(newLogStream);
+  newProtocol->setDelegate(&dccDelegate);
+  newProtocol->connect(newStream);
+  newProtocol->setDebug(true);
+  newProtocol->enableHeartbeat();
 
-  dccExProtocol = std::make_shared<DCCExController::DCCEXProtocol>(dccMillis, 600);
+  // Drain any stale errors left in the queue by the previous connection so
+  // they cannot trigger an immediate disconnect of the new session.
+  err_t staleErr;
+  while (xQueueReceive(tcp_fail_queue, &staleErr, 0) == pdTRUE) {
+  }
 
-  dccExProtocol->setLogStream(logStream);
-  dccExProtocol->setDelegate(&dccDelegate);
-  dccExProtocol->connect(stream);
-  dccExProtocol->setDebug(true);
-  dccExProtocol->enableHeartbeat();
-  lastGetListsMs = millis();
-  currentConnectionState = CONNECTED;
+  // Publish atomically under stateMutex_ so loop() never sees a partially
+  // initialised state.
+  if (xSemaphoreTake(stateMutex_, portMAX_DELAY) == pdTRUE) {
+    stream = newStream;
+    logStream = newLogStream;
+    dccExProtocol = newProtocol;
+    lastGetListsMs = millis();
+    currentConnectionState = CONNECTED;
+    xSemaphoreGive(stateMutex_);
+  }
 
   ESP_LOGI(TAG, "Connection process completed with state: %d", currentConnectionState);
 }
@@ -298,6 +315,134 @@ void WifiControl::disconnect() {
 
   xSemaphoreGive(stateMutex_);
   ESP_LOGI(TAG, "Disconnected from server");
+}
+
+// Sends a turnout throw/close command while holding the shared state mutex so
+// protocol writes cannot race with disconnect teardown.
+bool WifiControl::setTurnoutThrown(int turnoutId, bool thrown) {
+  if (stateMutex_ == nullptr) {
+    return false;
+  }
+
+  if (xSemaphoreTake(stateMutex_, pdMS_TO_TICKS(250)) != pdTRUE) {
+    ESP_LOGW(TAG, "setTurnoutThrown skipped: state mutex unavailable");
+    return false;
+  }
+
+  bool ok = false;
+  if (currentConnectionState == CONNECTED && dccExProtocol && stream) {
+    if (thrown) {
+      dccExProtocol->throwTurnout(turnoutId);
+    } else {
+      dccExProtocol->closeTurnout(turnoutId);
+    }
+    ok = true;
+  } else {
+    ESP_LOGW(TAG, "setTurnoutThrown ignored: not connected");
+  }
+
+  xSemaphoreGive(stateMutex_);
+  return ok;
+}
+
+// Starts a route while holding the shared state mutex so command writes cannot
+// race with disconnect teardown.
+bool WifiControl::startRoute(int routeId) {
+  if (stateMutex_ == nullptr) {
+    return false;
+  }
+
+  if (xSemaphoreTake(stateMutex_, pdMS_TO_TICKS(250)) != pdTRUE) {
+    ESP_LOGW(TAG, "startRoute skipped: state mutex unavailable");
+    return false;
+  }
+
+  bool ok = false;
+  if (currentConnectionState == CONNECTED && dccExProtocol && stream) {
+    dccExProtocol->startRoute(routeId);
+    ok = true;
+  } else {
+    ESP_LOGW(TAG, "startRoute ignored: not connected");
+  }
+
+  xSemaphoreGive(stateMutex_);
+  return ok;
+}
+
+// Pauses or resumes routes while holding the shared state mutex.
+bool WifiControl::setRoutesPaused(bool paused) {
+  if (stateMutex_ == nullptr) {
+    return false;
+  }
+
+  if (xSemaphoreTake(stateMutex_, pdMS_TO_TICKS(250)) != pdTRUE) {
+    ESP_LOGW(TAG, "setRoutesPaused skipped: state mutex unavailable");
+    return false;
+  }
+
+  bool ok = false;
+  if (currentConnectionState == CONNECTED && dccExProtocol && stream) {
+    if (paused) {
+      dccExProtocol->pauseRoutes();
+    } else {
+      dccExProtocol->resumeRoutes();
+    }
+    ok = true;
+  } else {
+    ESP_LOGW(TAG, "setRoutesPaused ignored: not connected");
+  }
+
+  xSemaphoreGive(stateMutex_);
+  return ok;
+}
+
+// Sends a turntable move command while holding the shared state mutex.
+bool WifiControl::rotateTurntableToIndex(int turntableId, int indexId) {
+  if (stateMutex_ == nullptr) {
+    return false;
+  }
+
+  if (xSemaphoreTake(stateMutex_, pdMS_TO_TICKS(250)) != pdTRUE) {
+    ESP_LOGW(TAG, "rotateTurntableToIndex skipped: state mutex unavailable");
+    return false;
+  }
+
+  bool ok = false;
+  if (currentConnectionState == CONNECTED && dccExProtocol && stream) {
+    dccExProtocol->rotateTurntable(turntableId, indexId);
+    ok = true;
+  } else {
+    ESP_LOGW(TAG, "rotateTurntableToIndex ignored: not connected");
+  }
+
+  xSemaphoreGive(stateMutex_);
+  return ok;
+}
+
+// Sends the raw turntable reverse command while holding the shared state
+// mutex.
+bool WifiControl::sendTurntableReverseCommand(int turntableId) {
+  if (stateMutex_ == nullptr) {
+    return false;
+  }
+
+  if (xSemaphoreTake(stateMutex_, pdMS_TO_TICKS(250)) != pdTRUE) {
+    ESP_LOGW(TAG, "sendTurntableReverseCommand skipped: state mutex unavailable");
+    return false;
+  }
+
+  bool ok = false;
+  if (currentConnectionState == CONNECTED && dccExProtocol && stream) {
+    char command[24];
+    snprintf(command, sizeof(command), "I %d 0 18", turntableId);
+    dccExProtocol->sendCommand(command);
+    ok = true;
+  } else {
+    ESP_LOGW(TAG, "sendTurntableReverseCommand ignored: not connected");
+  }
+
+  xSemaphoreGive(stateMutex_);
+  return ok;
 }
 
 // FreeRTOS task spawned by startConnectToServer: resolves the IP and calls

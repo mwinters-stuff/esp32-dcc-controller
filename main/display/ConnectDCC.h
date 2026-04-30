@@ -40,6 +40,8 @@ public:
 
 private:
   bool saveSelectedConnection();
+  bool selectedItemIsSaved() const;
+  void updateSaveButtonLabel();
   void connectToDCCDevice(const utilities::WithrottleDevice &dccDevice);
 
   std::vector<std::shared_ptr<DCCConnectListItem>> detectedListItems;
@@ -66,6 +68,7 @@ private:
   bool autoConnectAttempted = false;
   lv_obj_t *lbl_title = nullptr;
   lv_obj_t *list_auto = nullptr;
+  lv_obj_t *spinner = nullptr;
   lv_obj_t *btn_back = nullptr;
   lv_obj_t *btn_save = nullptr;
   lv_obj_t *btn_connect = nullptr;

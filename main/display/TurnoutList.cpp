@@ -217,32 +217,27 @@ void TurnoutListScreen::throwTurnout(std::shared_ptr<TurnoutListItem> item, bool
   ESP_LOGI(TAG, "Found item for turnout ID %d new thrown %s", item->getTurnoutId(),
            newThrownState ? "thrown" : "closed");
   auto wifiControl = utilities::WifiControl::instance();
-  auto dccProtocol = wifiControl->dccProtocol();
-  if (dccProtocol) {
-    auto turnout = DCCExController::Turnout::getById(item->getTurnoutId());
-    if (turnout) {
-      ESP_LOGI(TAG, "Found turnout for turnout ID %d cuurrent thrown %s", turnout->getId(),
-               turnout->getThrown() ? "thrown" : "closed");
-      if (newThrownState == turnout->getThrown()) {
-        ESP_LOGI(TAG, "Turnout ID %d is already in the desired state %s, update display", turnout->getId(),
-                 newThrownState ? "thrown" : "closed");
-        item->updateThrown(newThrownState);
-        return;
-      }
-      ESP_LOGI(TAG, "Setting turnout ID %d to %s", turnout->getId(), newThrownState ? "thrown" : "closed");
-      if (newThrownState) {
-        dccProtocol->throwTurnout(turnout->getId());
-      } else {
-        dccProtocol->closeTurnout(turnout->getId());
-      }
-      // Update the list item display
-      item->updateThrown(newThrownState);
+  auto turnout = DCCExController::Turnout::getById(item->getTurnoutId());
+  if (!turnout) {
+    ESP_LOGW(TAG, "No turnout found for ID %d", item->index);
+    return;
+  }
 
-    } else {
-      ESP_LOGW(TAG, "No turnout found for ID %d", item->index);
-    }
+  ESP_LOGI(TAG, "Found turnout for turnout ID %d cuurrent thrown %s", turnout->getId(),
+           turnout->getThrown() ? "thrown" : "closed");
+  if (newThrownState == turnout->getThrown()) {
+    ESP_LOGI(TAG, "Turnout ID %d is already in the desired state %s, update display", turnout->getId(),
+             newThrownState ? "thrown" : "closed");
+    item->updateThrown(newThrownState);
+    return;
+  }
+
+  ESP_LOGI(TAG, "Setting turnout ID %d to %s", turnout->getId(), newThrownState ? "thrown" : "closed");
+  if (wifiControl->setTurnoutThrown(turnout->getId(), newThrownState)) {
+    // Optimistically update display; server updates still reconcile via delegate messages.
+    item->updateThrown(newThrownState);
   } else {
-    ESP_LOGW(TAG, "DCC Protocol is null, cannot toggle turnout");
+    ESP_LOGW(TAG, "Unable to send turnout command while disconnected");
   }
 }
 

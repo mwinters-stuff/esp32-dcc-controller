@@ -57,6 +57,11 @@ public:
   void loop();
   void startConnectToServer(const char *server_ip, uint16_t port);
   void disconnect();
+  bool setTurnoutThrown(int turnoutId, bool thrown);
+  bool startRoute(int routeId);
+  bool setRoutesPaused(bool paused);
+  bool rotateTurntableToIndex(int turntableId, int indexId);
+  bool sendTurntableReverseCommand(int turntableId);
 
   std::shared_ptr<DCCExController::DCCEXProtocol> dccProtocol() { return dccExProtocol; };
 

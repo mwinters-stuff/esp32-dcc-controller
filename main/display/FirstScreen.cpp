@@ -149,6 +149,9 @@ void FirstScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   // Subscribe to WiFi messages
   subscribe_connected = lv_msg_subscribe(MSG_WIFI_CONNECTED, &FirstScreen::wifi_connected_trampoline, this);
   subscribe_not_saved = lv_msg_subscribe(MSG_WIFI_NOT_SAVED, &FirstScreen::wifi_not_saved_trampoline, this);
+  focusedIndex = 0;
+  updateFocusedState();
+  rotaryAttach();
   ESP_LOGI(TAG, "FirstScreen UI created (C LVGL)");
   if (!connected) {
     enableButtons(false);
@@ -163,6 +166,7 @@ void FirstScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
 void FirstScreen::cleanUp() {
   ESP_LOGI(TAG, "FirstScreen cleaned up");
   isCleanedUp = true;
+  rotaryDetach();
 
   if (subscribe_connected != nullptr) {
     lv_msg_unsubscribe(subscribe_connected);
@@ -179,8 +183,50 @@ void FirstScreen::cleanUp() {
   btn_cal = nullptr;
   lbl_status = nullptr;
   lbl_ip = nullptr;
+  focusedIndex = -1;
 
   lv_obj_clean(lvObj_);
+}
+
+void FirstScreen::moveFocus(int direction) {
+  if (isCleanedUp || direction == 0) {
+    return;
+  }
+
+  constexpr int total = 3;
+  int idx = focusedIndex;
+  if (idx < 0 || idx >= total) {
+    idx = 0;
+  } else {
+    idx = (idx + direction) % total;
+    if (idx < 0) {
+      idx += total;
+    }
+  }
+  focusedIndex = idx;
+  updateFocusedState();
+}
+
+void FirstScreen::updateFocusedState() {
+  applyFocusOutline(btn_connect, focusedIndex == 0);
+  applyFocusOutline(btn_wifi_scan, focusedIndex == 1);
+  applyFocusOutline(btn_cal, focusedIndex == 2);
+}
+
+void FirstScreen::rotaryMoveFocus(int direction) { moveFocus(direction); }
+
+void FirstScreen::rotaryActivateFocused() {
+  if (isCleanedUp) {
+    return;
+  }
+
+  if (focusedIndex == 0 && btn_connect && !lv_obj_has_state(btn_connect, LV_STATE_DISABLED)) {
+    lv_obj_send_event(btn_connect, LV_EVENT_CLICKED, nullptr);
+  } else if (focusedIndex == 1 && btn_wifi_scan && !lv_obj_has_state(btn_wifi_scan, LV_STATE_DISABLED)) {
+    lv_obj_send_event(btn_wifi_scan, LV_EVENT_CLICKED, nullptr);
+  } else if (focusedIndex == 2 && btn_cal && !lv_obj_has_state(btn_cal, LV_STATE_DISABLED)) {
+    lv_obj_send_event(btn_cal, LV_EVENT_CLICKED, nullptr);
+  }
 }
 
 // Opens the ConnectDCC screen.

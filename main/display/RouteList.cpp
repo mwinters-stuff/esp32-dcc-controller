@@ -113,21 +113,12 @@ void RouteListScreen::button_pause_resume_callback(lv_event_t *e) {
     return;
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     auto wifiControl = utilities::WifiControl::instance();
-    auto dccProtocol = wifiControl->dccProtocol();
-    if (dccProtocol == nullptr) {
-      ESP_LOGW(TAG, "DCC Protocol is null, cannot toggle route pause state");
-      setStatusText("DCC not connected");
-      return;
-    }
-
-    if (routesPaused) {
-      dccProtocol->resumeRoutes();
-      routesPaused = false;
-      setStatusText("Routes resumed");
+    const bool newPausedState = !routesPaused;
+    if (wifiControl->setRoutesPaused(newPausedState)) {
+      routesPaused = newPausedState;
+      setStatusText(routesPaused ? "Routes paused" : "Routes resumed");
     } else {
-      dccProtocol->pauseRoutes();
-      routesPaused = true;
-      setStatusText("Routes paused");
+      setStatusText("DCC not connected");
     }
     updatePauseResumeButton();
   }
@@ -215,14 +206,12 @@ void RouteListScreen::startRoute(std::shared_ptr<RouteListItem> item) {
   }
 
   auto wifiControl = utilities::WifiControl::instance();
-  auto dccProtocol = wifiControl->dccProtocol();
-  if (dccProtocol == nullptr) {
-    ESP_LOGW(TAG, "DCC Protocol is null, cannot start route");
+  if (!wifiControl->startRoute(item->getRouteId())) {
+    ESP_LOGW(TAG, "Cannot start route while disconnected");
     setStatusText("DCC not connected");
     return;
   }
 
-  dccProtocol->startRoute(item->getRouteId());
   routesPaused = false;
   updatePauseResumeButton();
   selectedRouteId = item->getRouteId();

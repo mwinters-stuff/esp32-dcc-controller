@@ -1,11 +1,11 @@
 #pragma once
-#include "Screen.h"
+#include "RotaryListScreenBase.h"
 #include "ui/lv_msg.h"
 #include <memory>
 
 namespace display {
 
-class FirstScreen : public Screen, public std::enable_shared_from_this<FirstScreen> {
+class FirstScreen : public RotaryListScreenBase, public std::enable_shared_from_this<FirstScreen> {
 public:
   static std::shared_ptr<FirstScreen> instance() {
     static std::shared_ptr<FirstScreen> s;
@@ -67,6 +67,14 @@ protected:
   }
 
 private:
+  bool rotaryInputEnabled() const override { return !isCleanedUp; }
+  void rotaryMoveFocus(int direction) override;
+  void rotaryActivateFocused() override;
+
+  void moveFocus(int direction);
+  void updateFocusedState();
+
+  int focusedIndex = -1;
   bool isCleanedUp = false;
   lv_msg_sub_dsc_t *subscribe_connected = nullptr;
   lv_msg_sub_dsc_t *subscribe_not_saved = nullptr;

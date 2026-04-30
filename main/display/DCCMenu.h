@@ -1,12 +1,12 @@
 #pragma once
 
-#include "Screen.h"
+#include "RotaryListScreenBase.h"
 #include <DCCEXProtocol.h>
 #include <memory>
 
 namespace display {
 
-class DCCMenu : public Screen, public std::enable_shared_from_this<DCCMenu> {
+class DCCMenu : public RotaryListScreenBase, public std::enable_shared_from_this<DCCMenu> {
 public:
   static std::shared_ptr<DCCMenu> instance() {
     static std::shared_ptr<DCCMenu> s;
@@ -87,6 +87,14 @@ protected:
   void ensureStatusHideTimer();
 
 private:
+  bool rotaryInputEnabled() const override { return !isCleanedUp; }
+  void rotaryMoveFocus(int direction) override;
+  void rotaryActivateFocused() override;
+
+  void moveFocus(int direction);
+  void updateFocusedState();
+
+  int focusedIndex = -1;
   lv_msg_sub_dsc_t *subscribe_dcc_roster_received = nullptr;
   lv_msg_sub_dsc_t *subscribe_dcc_turnout_received = nullptr;
   lv_msg_sub_dsc_t *subscribe_dcc_route_received = nullptr;

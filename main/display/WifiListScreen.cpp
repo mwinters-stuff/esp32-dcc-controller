@@ -46,11 +46,14 @@ void WifiListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) 
   ESP_LOGI("WIFI_LIST_SCREEN", "WifiListScreen shown");
 
   items.clear();
+  focusedIndex = 0;
 
   // Create spinner overlay (centered)
   spinner = makeSpinner(lvObj_, 0, 0, 50);
 
   disableButtons();
+  updateFocusedState();
+  rotaryAttach();
 
   // Start Wi-Fi scan in a separate task
   xTaskCreate(
@@ -71,6 +74,7 @@ void WifiListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) 
 void WifiListScreen::cleanUp() {
   ESP_LOGI(TAG, "WifiListScreen cleaned up");
   isCleanedUp = true;
+  rotaryDetach();
   if (scanTaskHandle != 0) {
     vTaskDelete(scanTaskHandle);
     scanTaskHandle = 0;
@@ -81,6 +85,7 @@ void WifiListScreen::cleanUp() {
   list_view = nullptr;
   spinner = nullptr;
   currentButton = nullptr;
+  focusedIndex = -1;
   lv_obj_clean(lvObj_);
 }
 
@@ -156,6 +161,7 @@ void WifiListScreen::populateList(const std::vector<wifi_ap_record_t> &records) 
   }
 
   ESP_LOGI(TAG, "Wi-Fi scan complete, list populated with %u entries", (unsigned)records.size());
+  updateFocusedState();
 }
 
 // Disables the Connect and Back buttons (used during scan).
@@ -255,6 +261,96 @@ void WifiListScreen::button_listitem_click_event_callback(lv_event_t *e) {
         lv_obj_clear_state(child, LV_STATE_CHECKED);
       }
     }
+
+    for (size_t idx = 0; idx < items.size(); ++idx) {
+      if (items[idx]->getLvObj() == currentButton) {
+        focusedIndex = static_cast<int>(idx);
+        break;
+      }
+    }
+    updateFocusedState();
+  }
+}
+
+void WifiListScreen::moveFocus(int direction) {
+  if (isCleanedUp || direction == 0) {
+    return;
+  }
+
+  const int total = static_cast<int>(items.size()) + 2; // Back, Connect
+  int idx = focusedIndex;
+  if (idx < 0 || idx >= total) {
+    idx = 0;
+  } else {
+    idx = (idx + direction) % total;
+    if (idx < 0) {
+      idx += total;
+    }
+  }
+  focusedIndex = idx;
+  updateFocusedState();
+}
+
+void WifiListScreen::updateFocusedState() {
+  const int listSize = static_cast<int>(items.size());
+  for (int i = 0; i < listSize; ++i) {
+    auto obj = items[i]->getLvObj();
+    if (!obj) {
+      continue;
+    }
+    applyFocusOutline(obj, i == focusedIndex);
+    if (i == focusedIndex) {
+      lv_obj_scroll_to_view(obj, LV_ANIM_OFF);
+    }
+  }
+
+  applyFocusOutline(btn_back, focusedIndex == listSize);
+  applyFocusOutline(btn_connect, focusedIndex == listSize + 1);
+}
+
+void WifiListScreen::rotaryMoveFocus(int direction) { moveFocus(direction); }
+
+void WifiListScreen::rotaryActivateFocused() {
+  if (isCleanedUp || focusedIndex < 0) {
+    return;
+  }
+
+  const int listSize = static_cast<int>(items.size());
+  if (focusedIndex < listSize) {
+    auto target = items[focusedIndex]->getLvObj();
+    if (!target) {
+      return;
+    }
+
+    if (currentButton == target) {
+      currentButton = nullptr;
+    } else {
+      currentButton = target;
+    }
+
+    for (int i = 0; i < listSize; ++i) {
+      auto obj = items[i]->getLvObj();
+      if (!obj) {
+        continue;
+      }
+      if (obj == currentButton) {
+        lv_obj_add_state(obj, LV_STATE_CHECKED);
+      } else {
+        lv_obj_clear_state(obj, LV_STATE_CHECKED);
+      }
+    }
+
+    if (btn_connect) {
+      if (currentButton) {
+        lv_obj_clear_state(btn_connect, LV_STATE_DISABLED);
+      } else {
+        lv_obj_add_state(btn_connect, LV_STATE_DISABLED);
+      }
+    }
+  } else if (focusedIndex == listSize && btn_back && !lv_obj_has_state(btn_back, LV_STATE_DISABLED)) {
+    lv_obj_send_event(btn_back, LV_EVENT_CLICKED, nullptr);
+  } else if (focusedIndex == listSize + 1 && btn_connect && !lv_obj_has_state(btn_connect, LV_STATE_DISABLED)) {
+    lv_obj_send_event(btn_connect, LV_EVENT_CLICKED, nullptr);
   }
 }
 

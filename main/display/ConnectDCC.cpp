@@ -50,6 +50,39 @@ bool ConnectDCCScreen::isBootAutoConnectHandled() { return bootAutoConnectHandle
 // Marks the boot auto-connect attempt as consumed so it is not retried.
 void ConnectDCCScreen::markBootAutoConnectHandled() { bootAutoConnectHandled = true; }
 
+bool ConnectDCCScreen::selectedItemIsSaved() const {
+  if (!currentButton) {
+    return false;
+  }
+
+  utilities::WithrottleDevice savedDevice;
+  if (!loadSavedConnection(savedDevice)) {
+    return false;
+  }
+
+  for (const auto &item : detectedListItems) {
+    if (item && item->getLvObj() == currentButton) {
+      const auto &dev = item->device();
+      return dev.ip == savedDevice.ip && dev.port == savedDevice.port;
+    }
+  }
+
+  return false;
+}
+
+void ConnectDCCScreen::updateSaveButtonLabel() {
+  if (!btn_save) {
+    return;
+  }
+
+  lv_obj_t *label = lv_obj_get_child(btn_save, 0);
+  if (!label) {
+    return;
+  }
+
+  lv_label_set_text(label, selectedItemIsSaved() ? "Delete" : "Save");
+}
+
 // Builds the UI, starts (or resumes) mDNS discovery and, on first boot,
 // shows the discovered DCC servers.
 void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
@@ -69,6 +102,9 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
   list_auto = makeListView(lvObj_, 0, 40, 320, 380);
   lv_obj_add_event_cb(list_auto, event_listitem_click_trampoline, LV_EVENT_CLICKED, this);
 
+  // Show loading spinner while no DCC servers are listed.
+  spinner = makeSpinner(lvObj_, 0, 0, 50);
+
   // Bottom Buttons
   btn_back = makeButton(lvObj_, "Back", 100, 40, LV_ALIGN_BOTTOM_LEFT, 8, -12, "button.secondary");
   lv_obj_add_event_cb(btn_back, &ConnectDCCScreen::event_back_trampoline, LV_EVENT_CLICKED, this);
@@ -76,6 +112,7 @@ void ConnectDCCScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
   lv_obj_add_event_cb(btn_save, &ConnectDCCScreen::event_save_trampoline, LV_EVENT_CLICKED, this);
   btn_connect = makeButton(lvObj_, "Connect", 100, 40, LV_ALIGN_BOTTOM_RIGHT, -8, -12, "button.primary");
   lv_obj_add_event_cb(btn_connect, &ConnectDCCScreen::event_connect_trampoline, LV_EVENT_CLICKED, this);
+  updateSaveButtonLabel();
 
   mdns_added_sub = lv_msg_subscribe(
       MSG_MDNS_DEVICE_ADDED,
@@ -234,6 +271,14 @@ void ConnectDCCScreen::refreshMdnsList() {
     }
   }
 
+  if (spinner) {
+    if (detectedListItems.empty()) {
+      lv_obj_clear_flag(spinner, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(spinner, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+
   if (currentButton) {
     lv_obj_add_state(currentButton, LV_STATE_CHECKED);
   }
@@ -245,6 +290,8 @@ void ConnectDCCScreen::refreshMdnsList() {
       lv_obj_add_state(btn_connect, LV_STATE_DISABLED);
     }
   }
+
+  updateSaveButtonLabel();
 
   const int totalFocusable = static_cast<int>(detectedListItems.size()) + 3;
   if (focusedIndex < 0 || focusedIndex >= totalFocusable) {
@@ -289,6 +336,7 @@ void ConnectDCCScreen::cleanUp() {
 
   lbl_title = nullptr;
   list_auto = nullptr;
+  spinner = nullptr;
   btn_back = nullptr;
   btn_save = nullptr;
   btn_connect = nullptr;
@@ -417,13 +465,27 @@ void ConnectDCCScreen::button_save_callback(lv_event_t *e) {
     if (currentButton) {
       auto currentItem = getItem(currentButton);
       if (currentItem) {
-        ESP_LOGI(TAG, "Save button pressed on %s", currentItem->getText().c_str());
-        if (saveSelectedConnection()) {
-          display::showMessageBox("Saved", "Saved DCC connection.", display::MessageBoxState::Success, nullptr,
-                                  nullptr);
+        if (selectedItemIsSaved()) {
+          ESP_LOGI(TAG, "Delete button pressed on saved item %s", currentItem->getText().c_str());
+          display::showMessageBox(
+              "Remove Saved", ("Remove saved DCC connection?\n" + currentItem->getText()).c_str(),
+              display::MessageBoxState::Warning,
+              [](void *ctx) {
+                auto *self = static_cast<ConnectDCCScreen *>(ctx);
+                if (self) {
+                  self->removeSavedConnection();
+                }
+              },
+              this);
         } else {
-          display::showMessageBox("Save Failed", "Unable to save DCC connection.", display::MessageBoxState::Error,
-                                  nullptr, nullptr);
+          ESP_LOGI(TAG, "Save button pressed on %s", currentItem->getText().c_str());
+          if (saveSelectedConnection()) {
+            display::showMessageBox("Saved", "Saved DCC connection.", display::MessageBoxState::Success, nullptr,
+                                    nullptr);
+          } else {
+            display::showMessageBox("Save Failed", "Unable to save DCC connection.", display::MessageBoxState::Error,
+                                    nullptr, nullptr);
+          }
         }
       }
     }
@@ -575,6 +637,8 @@ void ConnectDCCScreen::button_listitem_click_event_callback(lv_event_t *e) {
         lv_obj_clear_state(child, LV_STATE_CHECKED);
       }
     }
+
+    updateSaveButtonLabel();
   }
 }
 
@@ -666,6 +730,8 @@ void ConnectDCCScreen::rotaryActivateFocused() {
         lv_obj_add_state(btn_connect, LV_STATE_DISABLED);
       }
     }
+
+    updateSaveButtonLabel();
   } else if (focusedIndex == listSize && btn_back) {
     lv_obj_send_event(btn_back, LV_EVENT_CLICKED, nullptr);
   } else if (focusedIndex == listSize + 1 && btn_save) {

@@ -5,12 +5,12 @@
 #include <utility>
 #include <vector>
 
-#include "Screen.h"
+#include "RotaryListScreenBase.h"
 
 namespace display {
 using namespace ui;
 
-class WifiListScreen : public Screen, public std::enable_shared_from_this<WifiListScreen> {
+class WifiListScreen : public RotaryListScreenBase, public std::enable_shared_from_this<WifiListScreen> {
 public:
   static std::shared_ptr<WifiListScreen> instance() {
     static std::shared_ptr<WifiListScreen> s;
@@ -54,6 +54,14 @@ protected:
   }
 
 private:
+  bool rotaryInputEnabled() const override { return !isCleanedUp; }
+  void rotaryMoveFocus(int direction) override;
+  void rotaryActivateFocused() override;
+
+  void moveFocus(int direction);
+  void updateFocusedState();
+
+  int focusedIndex = -1;
   TaskHandle_t scanTaskHandle = 0;
   bool isCleanedUp = false;
   lv_obj_t *lbl_title = nullptr;

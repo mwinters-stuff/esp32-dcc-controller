@@ -192,14 +192,8 @@ void TurntableListScreen::activateItem(lv_obj_t *target) {
                                  (index->getTurntableId() == flashingTurntableId && index->getId() == flashingIndexId);
     if (isSelectedIndex) {
       auto wifiControl = utilities::WifiControl::instance();
-      auto dccProtocol = wifiControl->dccProtocol();
-      if (dccProtocol) {
-        char command[24];
-        snprintf(command, sizeof(command), "I %d 0 18", index->getTurntableId());
-        ESP_LOGI(TAG, "Re-click on highlighted turntable index, sending reverse command: <%s>", command);
-        dccProtocol->sendCommand(command);
-      } else {
-        ESP_LOGW(TAG, "DCC Protocol is null, cannot send turntable reverse command");
+      if (!wifiControl->sendTurntableReverseCommand(index->getTurntableId())) {
+        ESP_LOGW(TAG, "Cannot send turntable reverse command while disconnected");
       }
       return;
     }
@@ -272,21 +266,18 @@ void TurntableListScreen::activateFocused() {
 void TurntableListScreen::moveToIndex(std::shared_ptr<TurntableIndexListItem> index) {
   ESP_LOGI(TAG, "Moving to Turntable ID %d Index ID %d", index->getTurntableId(), index->getId());
   auto wifiControl = utilities::WifiControl::instance();
-  auto dccProtocol = wifiControl->dccProtocol();
-  if (dccProtocol) {
-    auto turnTable = DCCExController::Turntable::getById(index->getTurntableId());
-    if (turnTable) {
-      auto turnTableIndex = turnTable->getIndexById(index->getId());
-      if (turnTableIndex) {
-        dccProtocol->rotateTurntable(turnTable->getId(), turnTableIndex->getId());
-      } else {
-        ESP_LOGW(TAG, "No Turntable index found for ID %d", index->getId());
+  auto turnTable = DCCExController::Turntable::getById(index->getTurntableId());
+  if (turnTable) {
+    auto turnTableIndex = turnTable->getIndexById(index->getId());
+    if (turnTableIndex) {
+      if (!wifiControl->rotateTurntableToIndex(turnTable->getId(), turnTableIndex->getId())) {
+        ESP_LOGW(TAG, "Cannot move turntable while disconnected");
       }
     } else {
-      ESP_LOGW(TAG, "No Turntable found for ID %d", index->getTurntableId());
+      ESP_LOGW(TAG, "No Turntable index found for ID %d", index->getId());
     }
   } else {
-    ESP_LOGW(TAG, "DCC Protocol is null, cannot move to Turntable index");
+    ESP_LOGW(TAG, "No Turntable found for ID %d", index->getTurntableId());
   }
 }
 

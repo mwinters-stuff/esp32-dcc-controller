@@ -25,7 +25,9 @@ static const char *TAG = "DCC_MENU_SCREEN";
 
 namespace {
 constexpr uint32_t STATUS_HIDE_DELAY_MS = 20000;
-}
+
+bool is_focusable_enabled(lv_obj_t *obj) { return obj != nullptr && !lv_obj_has_state(obj, LV_STATE_DISABLED); }
+} // namespace
 
 // Stores the IP, port and display name of the server we just connected to.
 // Called by ConnectDCCScreen before showing this screen.
@@ -225,6 +227,26 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
 
   enableIfReceivedLists();
 
+  // Start focus on the first enabled control so rotary click is always useful.
+  focusedIndex = 0;
+  if (is_focusable_enabled(btn_roster)) {
+    focusedIndex = 0;
+  } else if (is_focusable_enabled(btn_turnouts)) {
+    focusedIndex = 1;
+  } else if (is_focusable_enabled(btn_routes)) {
+    focusedIndex = 2;
+  } else if (is_focusable_enabled(btn_turntables)) {
+    focusedIndex = 3;
+  } else if (is_focusable_enabled(btn_refresh)) {
+    focusedIndex = 4;
+  } else if (is_focusable_enabled(btn_track_power)) {
+    focusedIndex = 5;
+  } else if (is_focusable_enabled(btn_close)) {
+    focusedIndex = 6;
+  }
+  updateFocusedState();
+  rotaryAttach();
+
   ESP_LOGI(TAG, "DCCMenu UI created");
 }
 
@@ -292,6 +314,7 @@ void DCCMenu::cleanUp() {
 
   ESP_LOGI(TAG, "DCCMenu cleaned up");
   isCleanedUp = true;
+  rotaryDetach();
 
   if (statusHideTimer != nullptr) {
     lv_timer_delete(statusHideTimer);
@@ -309,6 +332,86 @@ void DCCMenu::cleanUp() {
   btn_close = nullptr;
   lbl_title = nullptr;
   lbl_status = nullptr;
+  focusedIndex = -1;
+}
+
+void DCCMenu::moveFocus(int direction) {
+  if (isCleanedUp || direction == 0) {
+    return;
+  }
+
+  constexpr int total = 7;
+  auto isIndexEnabled = [this](int idx) {
+    switch (idx) {
+    case 0:
+      return is_focusable_enabled(btn_roster);
+    case 1:
+      return is_focusable_enabled(btn_turnouts);
+    case 2:
+      return is_focusable_enabled(btn_routes);
+    case 3:
+      return is_focusable_enabled(btn_turntables);
+    case 4:
+      return is_focusable_enabled(btn_refresh);
+    case 5:
+      return is_focusable_enabled(btn_track_power);
+    case 6:
+      return is_focusable_enabled(btn_close);
+    default:
+      return false;
+    }
+  };
+
+  int idx = focusedIndex;
+  if (idx < 0 || idx >= total) {
+    idx = 0;
+  }
+
+  for (int attempts = 0; attempts < total; ++attempts) {
+    idx = (idx + direction) % total;
+    if (idx < 0) {
+      idx += total;
+    }
+    if (isIndexEnabled(idx)) {
+      focusedIndex = idx;
+      updateFocusedState();
+      return;
+    }
+  }
+}
+
+void DCCMenu::updateFocusedState() {
+  applyFocusOutline(btn_roster, focusedIndex == 0);
+  applyFocusOutline(btn_turnouts, focusedIndex == 1);
+  applyFocusOutline(btn_routes, focusedIndex == 2);
+  applyFocusOutline(btn_turntables, focusedIndex == 3);
+  applyFocusOutline(btn_refresh, focusedIndex == 4);
+  applyFocusOutline(btn_track_power, focusedIndex == 5);
+  applyFocusOutline(btn_close, focusedIndex == 6);
+}
+
+void DCCMenu::rotaryMoveFocus(int direction) { moveFocus(direction); }
+
+void DCCMenu::rotaryActivateFocused() {
+  if (isCleanedUp) {
+    return;
+  }
+
+  if (focusedIndex == 0 && btn_roster && !lv_obj_has_state(btn_roster, LV_STATE_DISABLED)) {
+    lv_obj_send_event(btn_roster, LV_EVENT_CLICKED, nullptr);
+  } else if (focusedIndex == 1 && btn_turnouts && !lv_obj_has_state(btn_turnouts, LV_STATE_DISABLED)) {
+    lv_obj_send_event(btn_turnouts, LV_EVENT_CLICKED, nullptr);
+  } else if (focusedIndex == 2 && btn_routes && !lv_obj_has_state(btn_routes, LV_STATE_DISABLED)) {
+    lv_obj_send_event(btn_routes, LV_EVENT_CLICKED, nullptr);
+  } else if (focusedIndex == 3 && btn_turntables && !lv_obj_has_state(btn_turntables, LV_STATE_DISABLED)) {
+    lv_obj_send_event(btn_turntables, LV_EVENT_CLICKED, nullptr);
+  } else if (focusedIndex == 4 && btn_refresh && !lv_obj_has_state(btn_refresh, LV_STATE_DISABLED)) {
+    lv_obj_send_event(btn_refresh, LV_EVENT_CLICKED, nullptr);
+  } else if (focusedIndex == 5 && btn_track_power && !lv_obj_has_state(btn_track_power, LV_STATE_DISABLED)) {
+    lv_obj_send_event(btn_track_power, LV_EVENT_CLICKED, nullptr);
+  } else if (focusedIndex == 6 && btn_close && !lv_obj_has_state(btn_close, LV_STATE_DISABLED)) {
+    lv_obj_send_event(btn_close, LV_EVENT_CLICKED, nullptr);
+  }
 }
 
 // Navigates to the Roster list screen, passing this screen as the parent so
