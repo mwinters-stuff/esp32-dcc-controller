@@ -1,6 +1,6 @@
 # ESP32-S3 DCC Controller
 
-Touchscreen DCC-EX WiThrottle controller running on ESP32-S3 with LVGL UI.
+Touchscreen DCC-EX Throttle controller running on ESP32-S3 with LVGL UI.
 
 ## Where Connections And Devices Are In Source
 
@@ -178,6 +178,16 @@ Notes:
 3. Run `ESP-IDF: Build your project`.
 4. Run `ESP-IDF: Flash your project`.
 5. Run `ESP-IDF: Monitor your device`.
+
+## Turntable Note
+
+If you are using a DCC turntable, you currently need these upstream pull requests until they are merged, if that happens:
+
+- `DCC-EX/EX-Turntable` PR 111: `https://github.com/DCC-EX/EX-Turntable/pull/111`
+- `DCC-EX/CommandStation-EX` PR 517: `https://github.com/DCC-EX/CommandStation-EX/pull/517`
+
+If you don't use those PR's then doing a 180 degree rotation
+will not work.
 
 ## Useful Files
 
