@@ -1,0 +1,28 @@
+digraph Wiring {
+  rankdir=LR;
+  graph [fontname="Helvetica", bgcolor="white", pad="0.2", nodesep="0.4", ranksep="0.8"];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11, color="#1f2937", fillcolor="#f3f4f6"];
+  edge [fontname="Helvetica", fontsize=10, color="#374151"];
+
+  ESP [label="ESP32-S3", shape=box, style="rounded,filled", fillcolor="#dbeafe", color="#1d4ed8", penwidth=1.6];
+  LCD [label="ILI9488 LCD", fillcolor="#ecfeff", color="#0e7490", penwidth=1.4];
+  TOUCH [label="XPT2046 Touch", fillcolor="#fefce8", color="#a16207", penwidth=1.4];
+  ENC [label="Rotary Encoder", fillcolor="#f5f3ff", color="#6d28d9", penwidth=1.4];
+
+  ESP -> LCD [label="GPIO12 SCLK"];
+  ESP -> LCD [label="GPIO11 MOSI"];
+  ESP -> LCD [label="GPIO13 MISO"];
+  ESP -> LCD [label="GPIO8 DC"];
+  ESP -> LCD [label="GPIO10 CS"];
+  ESP -> LCD [label="GPIO16 RST"];
+  ESP -> LCD [label="GPIO4 BL PWM"];
+
+  ESP -> TOUCH [label="GPIO12 SCLK"];
+  ESP -> TOUCH [label="GPIO11 MOSI"];
+  ESP -> TOUCH [label="GPIO13 MISO"];
+  ESP -> TOUCH [label="GPIO9 T_CS"];
+
+  ESP -> ENC [label="GPIO5 A"];
+  ESP -> ENC [label="GPIO6 B"];
+  ESP -> ENC [label="GPIO7 SW"];
+}

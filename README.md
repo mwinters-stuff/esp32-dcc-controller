@@ -86,6 +86,10 @@ Rotary defaults/options are configured via `main/Kconfig.projbuild` and `idf.py 
 
 ## Wiring Diagram
 
+![Static wiring diagram](docs/wiring-diagram.png)
+
+Diagram source: `docs/wiring-diagram.dot` (regenerate with `dot -Tpng docs/wiring-diagram.dot -o docs/wiring-diagram.png`).
+
 ```mermaid
 flowchart LR
 	ESP[ESP32-S3]
@@ -115,6 +119,30 @@ Pin source files:
 
 - `main/LGFX_ILI9488_S3.hpp` (LCD + touch)
 - `sdkconfig` (current rotary encoder GPIO values)
+
+## Hardware Photos
+
+### Front View
+
+![Front view of assembled controller](docs/dcc-front.png)
+
+This photo shows the assembled setup with:
+
+- 3.5 inch SPI TFT display module
+- ESP32-S3 development board
+- Rotary encoder module with `CLK`, `DT`, `SW`, `+`, and `-` pins
+
+### Back View
+
+![Back view of TFT module](docs/dcc-back.png)
+
+The rear silkscreen on the display board confirms these interface labels:
+
+- Touch: `T_IRQ`, `T_DO`, `T_DIN`, `T_CS`, `T_CLK`
+- TFT / SPI: `SDO(MISO)`, `LED`, `SCK`, `SDI(MOSI)`, `DC/RS`, `RESET`, `CS`, `GND`, `VCC`
+- SD card header: `SD_SCK`, `SD_MISO`, `SD_MOSI`, `SD_CS`
+
+These photos are useful as the as-built hardware reference, while the pin table above remains the software pin mapping taken from the current source tree.
 
 ## How To Program (Flash) The ESP32-S3
 
