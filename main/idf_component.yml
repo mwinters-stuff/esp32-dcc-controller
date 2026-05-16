@@ -21,11 +21,11 @@ dependencies:
   LovyanGFX:
     git: https://github.com/lovyan03/LovyanGFX.git
     # Optional: Specify a tag or commit
-    version: "1.2.19"
+    version: "1.2.21"
     # version: develop
     # version: "commit_hash"
   DCCEXProtocol:
     # path: ../../DCCEXProtocol
     git: https://github.com/mwinters-stuff/DCCEXProtocol.git
-    version: main
+    version: devel
 

@@ -1,4 +1,3 @@
-#include "ESP_Millis.h"
 #include "LGFX_ILI9488_S3.hpp"
 #include "definitions.h"
 #include "display/DisplayManager.h"
@@ -38,6 +37,7 @@ static lv_display_t *lvgl_disp = nullptr;
 
 // --- Display sleep tracking ---
 static std::atomic_bool displaySleeping{false};
+static std::atomic_bool pendingDccDisconnectPopup{false};
 constexpr uint32_t INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
 // --- FADE EFFECT ---
@@ -208,12 +208,8 @@ void setup() {
   lv_msg_subscribe(
       MSG_DCC_DISCONNECTED,
       [](lv_msg_t *) {
-        lv_async_call(
-            [](void *) {
-              display::showMessageBox("DCC Disconnected", "Connection to the DCC server was lost.",
-                                      display::MessageBoxState::Warning, return_to_main_screen, nullptr);
-            },
-            nullptr);
+        ESP_LOGI(TAG, "Received MSG_DCC_DISCONNECTED");
+        pendingDccDisconnectPopup.store(true);
       },
       nullptr);
 
@@ -255,6 +251,14 @@ extern "C" void app_main() {
   while (true) {
     lv_timer_handler();
     vTaskDelay(pdMS_TO_TICKS(10));
+
+    if (pendingDccDisconnectPopup.exchange(false)) {
+      ESP_LOGI(TAG, "Showing DCC disconnected message box");
+      wake_display_if_sleeping(lvgl_disp);
+      lv_display_trigger_activity(lvgl_disp);
+      display::showMessageBox("DCC Disconnected", "Connection to the DCC server was lost.",
+                              display::MessageBoxState::Warning, return_to_main_screen, nullptr);
+    }
 
     // --- Inactivity check (using LVGL's built-in tracking) ---
     if (!displaySleeping.load()) {

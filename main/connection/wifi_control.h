@@ -10,7 +10,6 @@
 
 #include <memory>
 
-#include "ESP_Millis.h"
 #include "dcc_delegate.h"
 #include "wifi_connection.h"
 
@@ -18,7 +17,7 @@ namespace utilities {
 
 class WifiControl {
 private:
-  std::shared_ptr<DCCExController::DCCEXProtocol> dccExProtocol;
+  std::shared_ptr<DCCEXProtocol> dccExProtocol;
   DCCEXProtocolDelegateImpl dccDelegate;
   TCPSocketStream *stream = nullptr;
   LoggingStream *logStream = nullptr;
@@ -62,15 +61,17 @@ public:
   bool setRoutesPaused(bool paused);
   bool rotateTurntableToIndex(int turntableId, int indexId);
   bool sendTurntableReverseCommand(int turntableId);
+  bool setLocoThrottle(int address, int speed, Direction direction);
+  bool stopLoco(int address);
+  bool setLocoFunction(int address, int function, bool on);
 
-  std::shared_ptr<DCCExController::DCCEXProtocol> dccProtocol() { return dccExProtocol; };
+  std::shared_ptr<DCCEXProtocol> dccProtocol() { return dccExProtocol; };
 
 private:
   static err_t tcp_connected_callback(void *arg, struct tcp_pcb *tpcb, err_t err);
   static void tcp_connect_err_callback(void *arg, err_t err);
   connection_state currentConnectionState = NOT_CONNECTED;
   uint64_t lastGetListsMs = 0;
-  DCCExController::DCCMillis *dccMillis;
   volatile bool connectCallbackDone_ = false;
   volatile bool connectCallbackSuccess_ = false;
   volatile err_t connectCallbackErr_ = ERR_OK;

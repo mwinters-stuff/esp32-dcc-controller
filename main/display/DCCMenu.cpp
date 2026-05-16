@@ -206,13 +206,13 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
         if (!statePayload)
           return;
 
-        self->trackPowerState = static_cast<DCCExController::TrackPower>(*statePayload);
+        self->trackPowerState = static_cast<TrackPower>(*statePayload);
         if (!self->btn_track_power)
           return;
 
-        if (self->trackPowerState == DCCExController::PowerOn) {
+        if (self->trackPowerState == PowerOn) {
           lv_obj_set_style_text_color(self->btn_track_power, lv_color_hex(0x2E7D32), LV_PART_MAIN);
-        } else if (self->trackPowerState == DCCExController::PowerOff) {
+        } else if (self->trackPowerState == PowerOff) {
           lv_obj_set_style_text_color(self->btn_track_power, lv_color_hex(0xC62828), LV_PART_MAIN);
         } else {
           lv_obj_set_style_text_color(self->btn_track_power, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
@@ -246,6 +246,11 @@ void DCCMenu::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   }
   updateFocusedState();
   rotaryAttach();
+
+  auto wifiControl = utilities::WifiControl::instance();
+  auto dccProtocol = wifiControl->dccProtocol();
+  dccProtocol->requestServerVersion();
+
 
   ESP_LOGI(TAG, "DCCMenu UI created");
 }
@@ -487,7 +492,7 @@ void DCCMenu::button_track_power_callback(lv_event_t *e) {
       return;
     }
 
-    if (trackPowerState == DCCExController::PowerOn) {
+    if (trackPowerState == PowerOn) {
       ESP_LOGI(TAG, "MainTrack power OFF requested");
       dccProtocol->powerMainOff();
     } else {

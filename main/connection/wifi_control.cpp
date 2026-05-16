@@ -23,6 +23,7 @@
 #include <esp_timer.h>
 #include <lvgl.h>
 #include <lwip/apps/mdns.h>
+#include <DCCMillisWrappers.h>
 
 namespace utilities {
 extern QueueHandle_t tcp_fail_queue;
@@ -44,7 +45,6 @@ WifiControl::WifiControl() { init(); }
 
 // Creates the state mutex and spawns wifi_loop_task.
 void WifiControl::init() {
-  dccMillis = new ESPDCCMillis();
   if (stateMutex_ == nullptr) {
     stateMutex_ = xSemaphoreCreateMutex();
   }
@@ -177,9 +177,9 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
   ESP_LOGI(TAG, "Connecting to server...");
   currentConnectionState = CONNECTING;
   const uint32_t timeout_ms = 10000;
-  uint32_t start_time = millis();
+  uint32_t start_time = dccex_esp_idf_millis();
   while (!connectCallbackDone_) {
-    uint32_t now = millis(); // Convert to milliseconds
+    uint32_t now = dccex_esp_idf_millis(); // Convert to milliseconds
     if (now - start_time > timeout_ms) {
       ESP_LOGI(TAG, "Connection timed out after 10 seconds");
       LOCK_TCPIP_CORE();
@@ -215,7 +215,7 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
   // up the non-null pointer and call check() on a protocol that has no stream
   // yet, leading to a null-stream write crash.
   auto *newLogStream = new LoggingStream(nullptr);
-  auto newProtocol = std::make_shared<DCCExController::DCCEXProtocol>(dccMillis, 600);
+  auto newProtocol = std::make_shared<DCCEXProtocol>(600);
   newProtocol->setLogStream(newLogStream);
   newProtocol->setDelegate(&dccDelegate);
   newProtocol->connect(newStream);
@@ -234,7 +234,7 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
     stream = newStream;
     logStream = newLogStream;
     dccExProtocol = newProtocol;
-    lastGetListsMs = millis();
+    lastGetListsMs = dccex_esp_idf_millis();
     currentConnectionState = CONNECTED;
     xSemaphoreGive(stateMutex_);
   }
@@ -249,7 +249,7 @@ void WifiControl::loop() {
   if (stateMutex_ != nullptr && xSemaphoreTake(stateMutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
     if (dccExProtocol) {
       dccExProtocol->check();
-      uint64_t now_ms = millis();
+      uint64_t now_ms = dccex_esp_idf_millis();
       if (now_ms - lastGetListsMs >= 1000) {
         dccExProtocol->getLists(true, true, true, true);
         lastGetListsMs = now_ms;
@@ -268,11 +268,8 @@ void WifiControl::loop() {
     failError(err);
     disconnect();
     ESP_LOGI(TAG, "Disconnected from server due to error");
-    lv_async_call(
-        [](void *) {
-          lv_msg_send(MSG_DCC_DISCONNECTED, nullptr);
-        },
-        nullptr);
+    ESP_LOGI(TAG, "Posting MSG_DCC_DISCONNECTED");
+    lv_msg_send(MSG_DCC_DISCONNECTED, nullptr);
   }
 }
 
@@ -439,6 +436,106 @@ bool WifiControl::sendTurntableReverseCommand(int turntableId) {
     ok = true;
   } else {
     ESP_LOGW(TAG, "sendTurntableReverseCommand ignored: not connected");
+  }
+
+  xSemaphoreGive(stateMutex_);
+  return ok;
+}
+
+// Sets loco speed/direction while holding the shared state mutex.
+bool WifiControl::setLocoThrottle(int address, int speed, Direction direction) {
+  if (stateMutex_ == nullptr) {
+    return false;
+  }
+
+  if (xSemaphoreTake(stateMutex_, pdMS_TO_TICKS(250)) != pdTRUE) {
+    ESP_LOGW(TAG, "setLocoThrottle skipped: state mutex unavailable");
+    return false;
+  }
+
+  bool ok = false;
+  if (currentConnectionState == CONNECTED && dccExProtocol && stream) {
+    auto *loco = Loco::getByAddress(address);
+    if (loco) {
+      int clampedSpeed = speed;
+      if (clampedSpeed < 0) {
+        clampedSpeed = 0;
+      } else if (clampedSpeed > 126) {
+        clampedSpeed = 126;
+      }
+
+      dccExProtocol->setThrottle(loco, clampedSpeed, direction);
+      ok = true;
+    } else {
+      ESP_LOGW(TAG, "setLocoThrottle ignored: unknown loco address %d", address);
+    }
+  } else {
+    ESP_LOGW(TAG, "setLocoThrottle ignored: not connected");
+  }
+
+  xSemaphoreGive(stateMutex_);
+  return ok;
+}
+
+// Sends a stop command (speed 0, current direction) for the specified loco.
+bool WifiControl::stopLoco(int address) {
+  if (stateMutex_ == nullptr) {
+    return false;
+  }
+
+  if (xSemaphoreTake(stateMutex_, pdMS_TO_TICKS(250)) != pdTRUE) {
+    ESP_LOGW(TAG, "stopLoco skipped: state mutex unavailable");
+    return false;
+  }
+
+  bool ok = false;
+  if (currentConnectionState == CONNECTED && dccExProtocol && stream) {
+    auto *loco = Loco::getByAddress(address);
+    if (loco) {
+      dccExProtocol->setThrottle(loco, 0, loco->getDirection());
+      ok = true;
+    } else {
+      ESP_LOGW(TAG, "stopLoco ignored: unknown loco address %d", address);
+    }
+  } else {
+    ESP_LOGW(TAG, "stopLoco ignored: not connected");
+  }
+
+  xSemaphoreGive(stateMutex_);
+  return ok;
+}
+
+// Turns a loco function on/off while holding the shared state mutex.
+bool WifiControl::setLocoFunction(int address, int function, bool on) {
+  if (stateMutex_ == nullptr) {
+    return false;
+  }
+
+  if (function < 0 || function > 27) {
+    ESP_LOGW(TAG, "setLocoFunction ignored: function out of range (%d)", function);
+    return false;
+  }
+
+  if (xSemaphoreTake(stateMutex_, pdMS_TO_TICKS(250)) != pdTRUE) {
+    ESP_LOGW(TAG, "setLocoFunction skipped: state mutex unavailable");
+    return false;
+  }
+
+  bool ok = false;
+  if (currentConnectionState == CONNECTED && dccExProtocol && stream) {
+    auto *loco = Loco::getByAddress(address);
+    if (loco) {
+      if (on) {
+        dccExProtocol->functionOn(loco, function);
+      } else {
+        dccExProtocol->functionOff(loco, function);
+      }
+      ok = true;
+    } else {
+      ESP_LOGW(TAG, "setLocoFunction ignored: unknown loco address %d", address);
+    }
+  } else {
+    ESP_LOGW(TAG, "setLocoFunction ignored: not connected");
   }
 
   xSemaphoreGive(stateMutex_);

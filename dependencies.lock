@@ -1,7 +1,9 @@
 dependencies:
   DCCEXProtocol:
-    component_hash: bf143aaa2e773ef871cc801549022c8ec177056409d1452f967b99bbaf273735
-    dependencies: []
+    component_hash: 76de2dea82281d7cc7c0ba532bc57e2f39eb703af83c8e3f318c5f8fa42c2675
+    dependencies:
+    - name: idf
+      version: '>=5.5.1'
     source:
       git: https://github.com/mwinters-stuff/DCCEXProtocol.git
       path: .
@@ -11,7 +13,7 @@ dependencies:
     - esp32s2
     - esp32s3
     - esp32c3
-    version: 38a0bd527cdae0445a4b6609beb2e513f656d679
+    version: 053e1b081e80f46b42f328f838af7eb19c89245c
   LovyanGFX:
     component_hash: 4b16f8e694fa4868f1312a4d593f5e4eab57e0693b050e1d08220ae8dad16520
     dependencies: []
@@ -57,7 +59,7 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 5.5.1
+    version: 5.5.4
   lvgl/lvgl:
     component_hash: 184e532558c1c45fefed631f3e235423d22582aafb4630f3e8885c35281a49ae
     dependencies: []
@@ -72,6 +74,6 @@ direct_dependencies:
 - espressif/mdns
 - idf
 - lvgl/lvgl
-manifest_hash: dd852ebb53be201524ad18800006aaae05e9af545869cfd92e9b76a1a3414c4d
+manifest_hash: e88b307ce4d7a82b0878d334f330c90eac41c4be720278c4670cfebb1b972991
 target: esp32s3
 version: 2.0.0

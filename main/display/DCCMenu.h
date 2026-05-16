@@ -116,7 +116,7 @@ private:
   lv_obj_t *btn_refresh;
   lv_obj_t *btn_track_power;
   lv_obj_t *btn_close;
-  DCCExController::TrackPower trackPowerState = DCCExController::PowerOff;
+  TrackPower trackPowerState = PowerOff;
 };
 
 } // namespace display

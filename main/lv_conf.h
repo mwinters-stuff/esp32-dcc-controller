@@ -34,7 +34,7 @@
  *=========================*/
 
 /*1: use custom malloc/free, 0: use the built-in `lv_mem_alloc()` and `lv_mem_free()`*/
-#define LV_MEM_CUSTOM 0
+#define LV_MEM_CUSTOM 1
 #if LV_MEM_CUSTOM == 0
     /*Size of the memory available for `lv_mem_alloc()` in bytes (>= 2kB)*/
     #define LV_MEM_SIZE (48U * 1024U)          /*[bytes]*/
@@ -54,8 +54,8 @@
     #define LV_MEM_CUSTOM_REALLOC realloc
 #endif     /*LV_MEM_CUSTOM*/
 
-/*Keep LVGL in single-thread mode; `lv_timer_handler()` runs in app_main loop*/
-#define LV_USE_OS   LV_OS_NONE
+/*Enable thread safety for FreeRTOS; required when calling lv_async_call() from multiple tasks*/
+#define LV_USE_OS   LV_OS_FREERTOS
 
 /*Number of the intermediate memory buffer used during rendering and other internal processing mechanisms.
  *You will see an error log message if there wasn't enough buffers. */

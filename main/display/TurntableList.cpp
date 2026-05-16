@@ -89,7 +89,7 @@ void TurntableListScreen::refreshList() {
   listItems.clear();
   lv_obj_clean(list_Turntables);
 
-  for (auto Turntable = DCCExController::Turntable::getFirst(); Turntable; Turntable = Turntable->getNext()) {
+  for (auto Turntable = Turntable::getFirst(); Turntable; Turntable = Turntable->getNext()) {
     ESP_LOGI(TAG, "Turntable ID=%d, Name=%s", Turntable->getId(), Turntable->getName());
 
     auto listItem = std::make_shared<TurntableListItem>(list_Turntables, listItems.size(), Turntable->getId(),
@@ -266,7 +266,7 @@ void TurntableListScreen::activateFocused() {
 void TurntableListScreen::moveToIndex(std::shared_ptr<TurntableIndexListItem> index) {
   ESP_LOGI(TAG, "Moving to Turntable ID %d Index ID %d", index->getTurntableId(), index->getId());
   auto wifiControl = utilities::WifiControl::instance();
-  auto turnTable = DCCExController::Turntable::getById(index->getTurntableId());
+  auto turnTable = Turntable::getById(index->getTurntableId());
   if (turnTable) {
     auto turnTableIndex = turnTable->getIndexById(index->getId());
     if (turnTableIndex) {

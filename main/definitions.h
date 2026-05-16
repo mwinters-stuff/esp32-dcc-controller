@@ -24,6 +24,7 @@
 #define MSG_DCC_TURNOUT_CHANGED 24
 #define MSG_DCC_TRACK_POWER_CHANGED 25
 #define MSG_DCC_TURNTABLE_CHANGED 26
+#define MSG_DCC_LOCO_CHANGED 27
 
 #define NVS_NAMESPACE "touch_cal"
 #define NVS_CALIBRATION_SAVED "cal_saved"
@@ -51,4 +52,11 @@ enum class WifiFailedSource : uint8_t {
 struct WifiFailedPayload {
   WifiFailedSource source;
   bool suppressGlobalPopup;
+};
+
+struct LocoStatePayload {
+  int address;
+  int speed;
+  int direction;
+  int functionMap;
 };
