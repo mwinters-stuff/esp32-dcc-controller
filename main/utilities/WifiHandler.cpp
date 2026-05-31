@@ -367,8 +367,6 @@ static void mdns_search_task_fn(void *arg) {
   TaskParams *p = static_cast<TaskParams *>(arg);
   WifiHandler *self = p->self;
   uint32_t interval = p->interval_ms;
-  uint32_t qtimeout = p->query_timeout_ms;
-  size_t maxr = p->max_results;
 
   // ESP_LOGI(TAG, "mDNS search loop started with interval=%u ms, query_timeout=%u ms, max_results=%u", interval,
   // qtimeout,
