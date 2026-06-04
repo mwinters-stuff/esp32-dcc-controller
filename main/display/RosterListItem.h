@@ -52,20 +52,33 @@ public:
     headerRow_ = lv_obj_create(lvObj);
     makeFlatContainer_(headerRow_);
     lv_obj_set_width(headerRow_, lv_pct(100));
-    lv_obj_set_flex_flow(headerRow_, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(headerRow_, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_height(headerRow_, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(headerRow_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(headerRow_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_row(headerRow_, 4, LV_PART_MAIN);
 
     nameLabel_ = lv_label_create(headerRow_);
     lv_label_set_text(nameLabel_, getDisplayName().c_str());
-    lv_obj_set_flex_grow(nameLabel_, 1);
+    lv_obj_set_width(nameLabel_, lv_pct(100));
+    lv_obj_set_style_text_font(nameLabel_, &lv_font_montserrat_20, LV_PART_MAIN);
 
-    directionLabel_ = lv_label_create(headerRow_);
+    speedRow_ = lv_obj_create(headerRow_);
+    makeFlatContainer_(speedRow_);
+    lv_obj_set_width(speedRow_, lv_pct(100));
+    lv_obj_set_height(speedRow_, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(speedRow_, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(speedRow_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(speedRow_, 4, LV_PART_MAIN);
 
-    speedValueLabel_ = lv_label_create(headerRow_);
+    arrowLeft_ = lv_label_create(speedRow_);
+    lv_label_set_text(arrowLeft_, LV_SYMBOL_LEFT);
 
-    speedBar_ = lv_bar_create(lvObj);
-    lv_obj_set_width(speedBar_, lv_pct(100));
+    speedBar_ = lv_bar_create(speedRow_);
+    lv_obj_set_flex_grow(speedBar_, 1);
     lv_bar_set_range(speedBar_, 0, 126);
+
+    arrowRight_ = lv_label_create(speedRow_);
+    lv_label_set_text(arrowRight_, LV_SYMBOL_RIGHT);
 
     expandedPanel_ = lv_obj_create(lvObj);
     makeFlatContainer_(expandedPanel_);
@@ -171,9 +184,9 @@ public:
 
     char speedText[32];
     std::snprintf(speedText, sizeof(speedText), "S:%d", speed_);
-    lv_label_set_text(speedValueLabel_, speedText);
     lv_label_set_text(expandedSpeedLabel_, speedText);
-    lv_label_set_text(directionLabel_, direction_ == Forward ? LV_SYMBOL_RIGHT : LV_SYMBOL_LEFT);
+    lv_obj_set_style_text_opa(arrowLeft_, direction_ == Reverse ? LV_OPA_COVER : LV_OPA_30, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(arrowRight_, direction_ == Forward ? LV_OPA_COVER : LV_OPA_30, LV_PART_MAIN);
 
     for (const auto &entry : functionButtons_) {
       const bool on = (functionMap_ & (1 << entry.first)) != 0;
@@ -188,9 +201,10 @@ public:
 private:
   lv_obj_t *lvObj;
   lv_obj_t *headerRow_ = nullptr;
+  lv_obj_t *speedRow_ = nullptr;
   lv_obj_t *nameLabel_ = nullptr;
-  lv_obj_t *directionLabel_ = nullptr;
-  lv_obj_t *speedValueLabel_ = nullptr;
+  lv_obj_t *arrowLeft_ = nullptr;
+  lv_obj_t *arrowRight_ = nullptr;
   lv_obj_t *speedBar_ = nullptr;
 
   lv_obj_t *expandedPanel_ = nullptr;
