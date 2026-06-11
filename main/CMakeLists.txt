@@ -17,6 +17,8 @@ idf_component_register(
     lwip
     esp_wifi 
     nvs_flash
+    spiffs
+    esp_http_server
     spi_flash
     lvgl__lvgl
     LovyanGFX

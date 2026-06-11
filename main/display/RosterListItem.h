@@ -58,9 +58,11 @@ public:
     lv_obj_set_style_pad_row(headerRow_, 4, LV_PART_MAIN);
 
     nameLabel_ = lv_label_create(headerRow_);
-    lv_label_set_text(nameLabel_, getDisplayName().c_str());
     lv_obj_set_width(nameLabel_, lv_pct(100));
+    lv_obj_set_height(nameLabel_, lv_font_get_line_height(&lv_font_montserrat_20));
+    lv_label_set_long_mode(nameLabel_, LV_LABEL_LONG_MODE_DOTS);
     lv_obj_set_style_text_font(nameLabel_, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_label_set_text(nameLabel_, getDisplayName().c_str());
 
     speedRow_ = lv_obj_create(headerRow_);
     makeFlatContainer_(speedRow_);

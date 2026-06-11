@@ -36,6 +36,9 @@ public:
   void clearCallbacks(void *userData = nullptr);
   void setActivityCallback(ActivityCallback cb, void *userData);
   bool isInitialized() const { return initialized_; }
+  void pause() { paused_ = true; }
+  void resume() { paused_ = false; }
+  bool isPaused() const { return paused_; }
 
 private:
   RotaryEncoder() = default;
@@ -67,6 +70,7 @@ private:
   ActivityCallback activityCallback_ = nullptr;
   void *activityUserData_ = nullptr;
   bool initialized_ = false;
+  bool paused_ = false;
 };
 
 } // namespace utilities

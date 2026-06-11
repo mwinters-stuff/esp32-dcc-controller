@@ -7,6 +7,7 @@
 #include "display/WifiConnectScreen.h"
 #include "ui/LvglTheme.h"
 #include "utilities/RotaryEncoder.h"
+#include "utilities/Screenshot.h"
 #include "utilities/WifiHandler.h"
 #include <LovyanGFX.hpp>
 #include <atomic>
@@ -80,6 +81,12 @@ void wake_display_if_sleeping(lv_display_t *disp) {
 
 // --- Touchpad Read Callback ---
 void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data) {
+  // Pause touch input during screenshot capture
+  if (utilities::isInputPausedForCapture()) {
+    data->state = LV_INDEV_STATE_RELEASED;
+    return;
+  }
+
   int32_t x = 0;
   int32_t y = 0;
   bool touched = DisplayManager::gfx.getTouch(&x, &y);
@@ -210,6 +217,19 @@ void setup() {
       [](lv_msg_t *) {
         ESP_LOGI(TAG, "Received MSG_DCC_DISCONNECTED");
         pendingDccDisconnectPopup.store(true);
+      },
+      nullptr);
+
+  lv_msg_subscribe(
+      MSG_TAKE_SCREENSHOT,
+      [](lv_msg_t *) {
+        lv_async_call(
+            [](void *) {
+              if (!utilities::saveActiveScreenScreenshot()) {
+                ESP_LOGE(TAG, "Screenshot capture failed");
+              }
+            },
+            nullptr);
       },
       nullptr);
 

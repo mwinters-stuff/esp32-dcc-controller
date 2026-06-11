@@ -5,18 +5,9 @@
   ],
   "idf.port": "/dev/ttyACM0",
   "idf.customExtraVars": {
-    "IDF_TARGET": "esp32s3",
-    "GIT_CONFIG_COUNT": "0",
-    "GIT_CONFIG_KEY_0": "",
-    "GIT_CONFIG_VALUE_0": "",
-    "GIT_CONFIG_KEY_1": "",
-    "GIT_CONFIG_VALUE_1": "",
-    "GIT_CONFIG_KEY_2": "",
-    "GIT_CONFIG_VALUE_2": "",
-    "GIT_CONFIG_KEY_3": "",
-    "GIT_CONFIG_VALUE_3": ""
+    "IDF_TARGET": "esp32s3"
   },
-  "idf.flashType": "UART",
+  "idf.flashType": "JTAG",
   "files.autoSave": "afterDelay",
   "idf.notificationMode": "Silent",
   "editor.tabSize": 2,

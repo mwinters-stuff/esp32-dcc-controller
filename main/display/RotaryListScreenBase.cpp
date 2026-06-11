@@ -38,6 +38,8 @@ void RotaryListScreenBase::rotaryNavigateBack() {
 
 void RotaryListScreenBase::rotaryHandleLongPress() { rotaryNavigateBack(); }
 
+void RotaryListScreenBase::rotaryHandleDoubleClick() {}
+
 void RotaryListScreenBase::processPendingRotate() {
   if (!rotaryInputEnabled()) {
     pendingRotateSteps_.store(0, std::memory_order_relaxed);
