@@ -6,16 +6,21 @@
 #include <DCCStream.h>
 #include <cstring>
 #include <esp_timer.h> // For get_absolute_time(), to_ms_since_boot()
+#include <lwip/opt.h>
 #include <lwip/priv/tcp_priv.h>
 #include <lwip/tcp.h>
 #include <lwip/tcpip.h>
 #include <stdarg.h>
 
+#if !LWIP_TCPIP_CORE_LOCKING
+#error "TCPSocketStream requires LWIP_TCPIP_CORE_LOCKING=y for thread-safe raw lwIP usage"
+#endif
+
 // Declare a queue handle
 namespace utilities {
 extern QueueHandle_t tcp_fail_queue;
 
-class TCPSocketStream : public DCCExController::DCCStream {
+class TCPSocketStream : public Stream {
 private:
   struct tcp_pcb *pcb;
   struct pbuf *recv_buffer;
@@ -58,7 +63,10 @@ private:
       tcp_arg(tpcb, nullptr);
       tcp_recv(tpcb, nullptr);
       tcp_err(tpcb, nullptr);
-      tcp_close(tpcb);
+      err_t closeErr = tcp_close(tpcb);
+      if (closeErr != ERR_OK) {
+        tcp_abort(tpcb);
+      }
       stream->pcb = nullptr;
       stream->failed = true;
       stream->err = err;
@@ -101,7 +109,7 @@ public:
   }
 
   // Check if data is available to read
-  int available() const { return recv_buffer ? recv_buffer->tot_len : 0; }
+  int available() { return recv_buffer ? recv_buffer->tot_len : 0; }
 
   // Read a single byte from the socket
   int read() {
@@ -226,7 +234,13 @@ public:
   ~TCPSocketStream() {
     LOCK_TCPIP_CORE();
     if (pcb != nullptr) {
-      tcp_close(pcb);
+      tcp_arg(pcb, nullptr);
+      tcp_recv(pcb, nullptr);
+      tcp_err(pcb, nullptr);
+      err_t closeErr = tcp_close(pcb);
+      if (closeErr != ERR_OK) {
+        tcp_abort(pcb);
+      }
       pcb = nullptr;
     }
     if (recv_buffer != nullptr) {
@@ -237,13 +251,13 @@ public:
   }
 };
 
-class LoggingStream : public DCCExController::DCCStream {
+class LoggingStream : public Stream {
 
 public:
   explicit LoggingStream(struct tcp_pcb *pcb) {}
 
   // Check if data is available to read
-  int available() const { return 0; }
+  int available() { return 0; }
 
   // Read a single byte from the socket
   int read() { return 0; }

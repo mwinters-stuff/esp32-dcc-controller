@@ -161,6 +161,10 @@ void RotaryEncoder::setActivityCallback(ActivityCallback cb, void *userData) {
 // Dispatches a rotation event with the given delta to all registered rotate
 // callbacks, then fires the activity callback.
 void RotaryEncoder::emitRotate(int32_t delta) {
+  if (paused_) {
+    return;
+  }
+
   RotateCallback rotateCb = nullptr;
   void *userData = nullptr;
   ActivityCallback actCb = nullptr;
@@ -184,6 +188,10 @@ void RotaryEncoder::emitRotate(int32_t delta) {
 // Dispatches a click event to all registered click callbacks, then fires the
 // activity callback.
 void RotaryEncoder::emitClick() {
+  if (paused_) {
+    return;
+  }
+
   ClickCallback clickCb = nullptr;
   void *userData = nullptr;
   ActivityCallback actCb = nullptr;
@@ -207,6 +215,10 @@ void RotaryEncoder::emitClick() {
 // Dispatches a double-click event to all registered double-click callbacks,
 // then fires the activity callback.
 void RotaryEncoder::emitDoubleClick() {
+  if (paused_) {
+    return;
+  }
+
   DoubleClickCallback doubleClickCb = nullptr;
   void *userData = nullptr;
   ActivityCallback actCb = nullptr;
@@ -230,6 +242,10 @@ void RotaryEncoder::emitDoubleClick() {
 // Dispatches a long-press event to all registered long-press callbacks, then
 // fires the activity callback.
 void RotaryEncoder::emitLongPress() {
+  if (paused_) {
+    return;
+  }
+
   LongPressCallback longPressCb = nullptr;
   void *userData = nullptr;
   ActivityCallback actCb = nullptr;

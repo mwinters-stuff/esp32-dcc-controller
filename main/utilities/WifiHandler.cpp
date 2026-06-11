@@ -11,6 +11,7 @@
 #include "definitions.h"
 #include "display/MessageBox.h"
 #include "ui/lv_msg.h"
+#include "utilities/ScreenshotHttp.h"
 #include <esp_event.h>
 #include <esp_log.h>
 #include <esp_netif.h>
@@ -84,6 +85,7 @@ void WifiHandler::wifi_event_handler(void *arg, esp_event_base_t event_base, int
     ESP_LOGI(TAG, "WifiEventHandler: WIFI_EVENT_STA_DISCONNECTED");
     self->connected = false;
     xEventGroupSetBits(wifi_event_group, WIFI_FAIL_BIT);
+    stopScreenshotHttpServer();
 
     if (!self->manualConnectInProgress) {
       ESP_LOGI(TAG, "Manual connect in progress, skipping disconnect handling");
@@ -100,6 +102,13 @@ void WifiHandler::wifi_event_handler(void *arg, esp_event_base_t event_base, int
     ESP_LOGI(TAG, "WifiEventHandler: IP_EVENT_STA_GOT_IP");
     self->connected = true;
     xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
+    startScreenshotHttpServer();
+
+    const std::string ip = self->getIpAddress();
+    if (!ip.empty()) {
+      ESP_LOGI(TAG, "Screenshot URL: http://%s:8080/screenshot_latest.ppm", ip.c_str());
+    }
+
     lv_async_call(
         [](void *) {
           lv_msg_send(MSG_WIFI_CONNECTED, NULL);
@@ -367,8 +376,6 @@ static void mdns_search_task_fn(void *arg) {
   TaskParams *p = static_cast<TaskParams *>(arg);
   WifiHandler *self = p->self;
   uint32_t interval = p->interval_ms;
-  uint32_t qtimeout = p->query_timeout_ms;
-  size_t maxr = p->max_results;
 
   // ESP_LOGI(TAG, "mDNS search loop started with interval=%u ms, query_timeout=%u ms, max_results=%u", interval,
   // qtimeout,

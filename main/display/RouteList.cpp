@@ -62,7 +62,7 @@ void RouteListScreen::refreshList() {
   listItems.clear();
   lv_obj_clean(list_routes);
 
-  for (auto route = DCCExController::Route::getFirst(); route; route = route->getNext()) {
+  for (auto route = Route::getFirst(); route; route = route->getNext()) {
     const char *routeName = route->getName();
     auto listItem = std::make_shared<RouteListItem>(list_routes, listItems.size(), route->getId(),
                                                     routeName ? routeName : "", static_cast<char>(route->getType()));

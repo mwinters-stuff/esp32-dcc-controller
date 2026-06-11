@@ -16,7 +16,7 @@ protected:
   virtual void rotaryMoveFocus(int direction) = 0;
   virtual void rotaryActivateFocused() = 0;
   virtual void rotaryHandleLongPress();
-  virtual void rotaryHandleDoubleClick() {}
+  virtual void rotaryHandleDoubleClick();
 
   static void applyFocusOutline(lv_obj_t *obj, bool focused);
 

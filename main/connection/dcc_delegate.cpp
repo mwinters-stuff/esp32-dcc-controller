@@ -67,6 +67,23 @@ void async_send_turntable(uint32_t msg_id, const TurntableActionData &data) {
       m);
 }
 
+// Schedules an lv_msg_send carrying a LocoStatePayload payload on the LVGL
+// thread.
+void async_send_loco(uint32_t msg_id, const LocoStatePayload &data) {
+  struct Msg {
+    uint32_t id;
+    LocoStatePayload data;
+  };
+  auto *m = new Msg{msg_id, data};
+  lv_async_call(
+      [](void *arg) {
+        auto *m = static_cast<Msg *>(arg);
+        lv_msg_send(m->id, &m->data);
+        delete m;
+      },
+      m);
+}
+
 // Schedules an lv_msg_send carrying a single uint8_t value on the LVGL thread.
 void async_send_u8(uint32_t msg_id, uint8_t value) {
   struct Msg {
@@ -118,38 +135,57 @@ void DCCEXProtocolDelegateImpl::receivedTurntableList() {
 }
 
 // Called when a loco update is received; fires MSG_LOCO_SPEED_UPDATED.
-void DCCEXProtocolDelegateImpl::receivedLocoUpdate(DCCExController::Loco *loco) {
+void DCCEXProtocolDelegateImpl::receivedLocoUpdate(Loco *loco) {
+  if (!loco) {
+    return;
+  }
+
   printf("Loco Update: Address=%d\n", loco->getAddress());
+  LocoStatePayload payload = {
+      .address = loco->getAddress(),
+      .speed = loco->getSpeed(),
+      .direction = static_cast<int>(loco->getDirection()),
+      .functionMap = loco->getFunctionStates(),
+  };
+  async_send_loco(MSG_DCC_LOCO_CHANGED, payload);
 }
 
-// Called on a broadcast speed/direction update for a loco address;
-// fires MSG_LOCO_BROADCAST_UPDATED.
-void DCCEXProtocolDelegateImpl::receivedLocoBroadcast(int address, int speed, DCCExController::Direction direction,
+// Called on a broadcast speed/direction update for a loco address and forwards
+// it to roster screens as MSG_DCC_LOCO_CHANGED.
+void DCCEXProtocolDelegateImpl::receivedLocoBroadcast(int address, int speed, Direction direction,
                                                       int functionMap) {
   printf("Loco Broadcast: Address=%d, Speed=%d, Direction=%d, FunctionMap=%d\n", address, speed, direction,
          functionMap);
-  // DCCExController::Loco *loco = DCCExController::Loco::getByAddress(address);
-  // if (loco) {
-  //   loco->setSpeed(speed);
-  //   loco->setDirection(direction);
-  //   loco->setFunctionStates(functionMap);
-  // }
+  Loco *loco = Loco::getByAddress(address);
+  if (loco) {
+    loco->setSpeed(speed);
+    loco->setDirection(direction);
+    loco->setFunctionStates(functionMap);
+  }
+
+  LocoStatePayload payload = {
+      .address = address,
+      .speed = speed,
+      .direction = static_cast<int>(direction),
+      .functionMap = functionMap,
+  };
+  async_send_loco(MSG_DCC_LOCO_CHANGED, payload);
 }
 
 // Called when global track power state changes; fires MSG_TRACK_POWER_UPDATED.
-void DCCEXProtocolDelegateImpl::receivedTrackPower(DCCExController::TrackPower state) {
+void DCCEXProtocolDelegateImpl::receivedTrackPower(TrackPower state) {
   printf("Track Power State: %d\n", state);
   async_send_u8(MSG_DCC_TRACK_POWER_CHANGED, static_cast<uint8_t>(state));
 }
 
 // Called for per-track power updates; fires MSG_INDIVIDUAL_TRACK_POWER_UPDATED.
-void DCCEXProtocolDelegateImpl::receivedIndividualTrackPower(DCCExController::TrackPower state, int track) {
+void DCCEXProtocolDelegateImpl::receivedIndividualTrackPower(TrackPower state, int track) {
   printf("Individual Track Power: Track=%d, State=%d\n", track, state);
   async_send_u8(MSG_DCC_TRACK_POWER_CHANGED, static_cast<uint8_t>(state));
 }
 
 // Called when a track's operational mode changes; logged to stdout.
-void DCCEXProtocolDelegateImpl::receivedTrackType(char track, DCCExController::TrackManagerMode type, int address) {
+void DCCEXProtocolDelegateImpl::receivedTrackType(char track, TrackManagerMode type, int address) {
   printf("Track Type: Track=%c, Type=%d, Address=%d\n", track, type, address);
 }
 
@@ -157,8 +193,10 @@ void DCCEXProtocolDelegateImpl::receivedTrackType(char track, DCCExController::T
 // fires MSG_TURNOUT_ACTION.
 void DCCEXProtocolDelegateImpl::receivedTurnoutAction(int turnoutId, bool thrown) {
   printf("Turnout Action: ID=%d, Thrown=%s\n", turnoutId, thrown ? "true" : "false");
-  turnoutActionData.turnoutId = turnoutId;
-  turnoutActionData.thrown = thrown;
+  TurnoutActionData turnoutActionData = {
+      .turnoutId = turnoutId,
+      .thrown = thrown,
+  };
   async_send_turnout(MSG_DCC_TURNOUT_CHANGED, turnoutActionData);
 }
 
@@ -166,9 +204,11 @@ void DCCEXProtocolDelegateImpl::receivedTurnoutAction(int turnoutId, bool thrown
 // fires MSG_TURNTABLE_ACTION.
 void DCCEXProtocolDelegateImpl::receivedTurntableAction(int turntableId, int position, bool moving) {
   printf("Turntable Action: ID=%d, Position=%d, Moving=%s\n", turntableId, position, moving ? "true" : "false");
-  turntableActionData.turntableId = turntableId;
-  turntableActionData.position = position;
-  turntableActionData.moving = moving;
+  TurntableActionData turntableActionData = {
+      .turntableId = turntableId,
+      .position = position,
+      .moving = moving,
+  };
   async_send_turntable(MSG_DCC_TURNTABLE_CHANGED, turntableActionData);
 }
 

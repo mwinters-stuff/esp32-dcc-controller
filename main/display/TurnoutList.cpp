@@ -82,7 +82,7 @@ void TurnoutListScreen::refreshList() {
   listItems.clear();
   lv_obj_clean(list_turnouts);
 
-  for (auto turnout = DCCExController::Turnout::getFirst(); turnout; turnout = turnout->getNext()) {
+  for (auto turnout = Turnout::getFirst(); turnout; turnout = turnout->getNext()) {
     ESP_LOGI(TAG, "Turnout ID=%d, Name=%s, Thrown=%s", turnout->getId(), turnout->getName(),
              turnout->getThrown() ? "thrown" : "closed");
 
@@ -217,7 +217,7 @@ void TurnoutListScreen::throwTurnout(std::shared_ptr<TurnoutListItem> item, bool
   ESP_LOGI(TAG, "Found item for turnout ID %d new thrown %s", item->getTurnoutId(),
            newThrownState ? "thrown" : "closed");
   auto wifiControl = utilities::WifiControl::instance();
-  auto turnout = DCCExController::Turnout::getById(item->getTurnoutId());
+  auto turnout = Turnout::getById(item->getTurnoutId());
   if (!turnout) {
     ESP_LOGW(TAG, "No turnout found for ID %d", item->index);
     return;

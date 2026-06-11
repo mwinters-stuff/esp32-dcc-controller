@@ -1,4 +1,3 @@
-#include "ESP_Millis.h"
 #include "LGFX_ILI9488_S3.hpp"
 #include "definitions.h"
 #include "display/DisplayManager.h"
@@ -8,6 +7,7 @@
 #include "display/WifiConnectScreen.h"
 #include "ui/LvglTheme.h"
 #include "utilities/RotaryEncoder.h"
+#include "utilities/Screenshot.h"
 #include "utilities/WifiHandler.h"
 #include <LovyanGFX.hpp>
 #include <atomic>
@@ -38,6 +38,7 @@ static lv_display_t *lvgl_disp = nullptr;
 
 // --- Display sleep tracking ---
 static std::atomic_bool displaySleeping{false};
+static std::atomic_bool pendingDccDisconnectPopup{false};
 constexpr uint32_t INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
 // --- FADE EFFECT ---
@@ -80,6 +81,12 @@ void wake_display_if_sleeping(lv_display_t *disp) {
 
 // --- Touchpad Read Callback ---
 void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data) {
+  // Pause touch input during screenshot capture
+  if (utilities::isInputPausedForCapture()) {
+    data->state = LV_INDEV_STATE_RELEASED;
+    return;
+  }
+
   int32_t x = 0;
   int32_t y = 0;
   bool touched = DisplayManager::gfx.getTouch(&x, &y);
@@ -208,10 +215,19 @@ void setup() {
   lv_msg_subscribe(
       MSG_DCC_DISCONNECTED,
       [](lv_msg_t *) {
+        ESP_LOGI(TAG, "Received MSG_DCC_DISCONNECTED");
+        pendingDccDisconnectPopup.store(true);
+      },
+      nullptr);
+
+  lv_msg_subscribe(
+      MSG_TAKE_SCREENSHOT,
+      [](lv_msg_t *) {
         lv_async_call(
             [](void *) {
-              display::showMessageBox("DCC Disconnected", "Connection to the DCC server was lost.",
-                                      display::MessageBoxState::Warning, return_to_main_screen, nullptr);
+              if (!utilities::saveActiveScreenScreenshot()) {
+                ESP_LOGE(TAG, "Screenshot capture failed");
+              }
             },
             nullptr);
       },
@@ -255,6 +271,14 @@ extern "C" void app_main() {
   while (true) {
     lv_timer_handler();
     vTaskDelay(pdMS_TO_TICKS(10));
+
+    if (pendingDccDisconnectPopup.exchange(false)) {
+      ESP_LOGI(TAG, "Showing DCC disconnected message box");
+      wake_display_if_sleeping(lvgl_disp);
+      lv_display_trigger_activity(lvgl_disp);
+      display::showMessageBox("DCC Disconnected", "Connection to the DCC server was lost.",
+                              display::MessageBoxState::Warning, return_to_main_screen, nullptr);
+    }
 
     // --- Inactivity check (using LVGL's built-in tracking) ---
     if (!displaySleeping.load()) {
