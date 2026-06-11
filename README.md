@@ -150,7 +150,7 @@ This project uses ESP-IDF and targets `esp32s3`.
 
 ### Prerequisites
 
-- ESP-IDF v5.5.1 installed.
+- ESP-IDF v5.5.x installed.
 - USB connected ESP32-S3 board.
 - Serial permissions (Linux user in `dialout` group, if required).
 
@@ -160,7 +160,7 @@ From project root:
 
 ```bash
 cd /home/mathew/src/esp32-dcc-controller
-source /home/mathew/.esp/v5.5.1/esp-idf/export.sh
+source /home/mathew/.esp/v5.5.x/esp-idf/export.sh
 idf.py set-target esp32s3
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
@@ -194,3 +194,11 @@ will not work.
 - `sdkconfig` - active build configuration.
 - `partitions.csv` - partition layout.
 - `main/idf_component.yml` - external dependencies (LVGL, LovyanGFX, DCCEXProtocol, mdns, button).
+
+
+# Screenshot
+
+Screenshots can be taken by going to the ip address with port number 8080. There you can take a screen shot
+of the current screen and download it. The screenshots are saved as `screenshot_latest.ppm`.
+
+[screenshot_latest.ppm](docs/screenshot_latest.ppm)
