@@ -8,6 +8,7 @@
 #include <freertos/semphr.h>
 #include <lwip/tcp.h>
 
+#include <atomic>
 #include <memory>
 
 #include "dcc_delegate.h"
@@ -64,6 +65,7 @@ public:
   bool setLocoThrottle(int address, int speed, Direction direction);
   bool stopLoco(int address);
   bool setLocoFunction(int address, int function, bool on);
+  bool requestLocoUpdate(int address);
 
   std::shared_ptr<DCCEXProtocol> dccProtocol() { return dccExProtocol; };
 
@@ -76,6 +78,12 @@ private:
   volatile bool connectCallbackSuccess_ = false;
   volatile err_t connectCallbackErr_ = ERR_OK;
   SemaphoreHandle_t stateMutex_ = nullptr;
+  std::atomic<int> pendingLocoUpdateAddress_{-1};
+  std::atomic<int> pendingThrottleAddress_{-1};
+  std::atomic<int> pendingThrottleSpeed_{0};
+  std::atomic<int> pendingThrottleDirection_{0};
+  std::atomic<bool> pendingThrottleValid_{false};
+  std::atomic<int> pendingStopAddress_{-1};
 
   struct ConnectTaskArgs {
     WifiControl *self;

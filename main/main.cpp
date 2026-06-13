@@ -79,6 +79,20 @@ void wake_display_if_sleeping(lv_display_t *disp) {
   }
 }
 
+void app_note_user_activity() {
+  if (lvgl_disp == nullptr) {
+    return;
+  }
+
+  lv_async_call(
+      [](void *d) {
+        auto *display = static_cast<lv_display_t *>(d);
+        wake_display_if_sleeping(display);
+        lv_display_trigger_activity(display);
+      },
+      lvgl_disp);
+}
+
 // --- Touchpad Read Callback ---
 void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data) {
   // Pause touch input during screenshot capture
@@ -182,16 +196,10 @@ void setup() {
 #endif
   );
   utilities::RotaryEncoder::instance()->setActivityCallback(
-      [](void *disp) {
-        lv_async_call(
-            [](void *d) {
-              auto *display = static_cast<lv_display_t *>(d);
-              wake_display_if_sleeping(display);
-              lv_display_trigger_activity(display);
-            },
-            disp);
+      [](void *) {
+        app_note_user_activity();
       },
-      lvgl_disp);
+      nullptr);
 #endif
 
   // Global handlers: show a message and return to the home screen once confirmed.

@@ -1,5 +1,8 @@
 #pragma once
 #include "RotaryListScreenBase.h"
+#include "utilities/RotaryEncoder.h"
+#include <atomic>
+#include <cstdint>
 #include <memory>
 
 #include "RosterListItem.h"
@@ -44,6 +47,18 @@ private:
   void requestThrottle(int address, int speed, Direction direction);
   void requestStop(int address);
   void requestFunction(int address, int function, bool on);
+  int activeAddressForThrottle() const;
+  void attachThrottleEncoder();
+  void detachThrottleEncoder();
+  void processPendingThrottleSteps();
+  void handleThrottleEncoderClick();
+  void handleThrottleEncoderLongPress();
+
+  static void throttle_rotate_trampoline(int32_t delta, void *userData);
+  static void throttle_click_trampoline(void *userData);
+  static void throttle_double_click_trampoline(void *userData);
+  static void throttle_long_press_trampoline(void *userData);
+  static void throttle_process_trampoline(void *userData);
 
   lv_msg_sub_dsc_t *roster_received_sub = nullptr;
   lv_msg_sub_dsc_t *loco_changed_sub = nullptr;
@@ -52,6 +67,11 @@ private:
   lv_obj_t *lbl_title = nullptr;
   lv_obj_t *list_roster = nullptr;
   lv_obj_t *btn_back = nullptr;
+  utilities::RotaryEncoder throttleEncoder_;
+  bool throttleEncoderAttached_ = false;
+  std::atomic<int32_t> pendingThrottleSteps_{0};
+  int64_t lastThrottleStepUs_ = 0;
+  size_t locoPollCursor_ = 0;
 
 protected:
   RosterListScreen() = default;

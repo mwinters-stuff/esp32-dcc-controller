@@ -28,6 +28,8 @@ public:
   RotaryEncoder &operator=(const RotaryEncoder &) = delete;
   ~RotaryEncoder();
 
+  RotaryEncoder() = default;
+
   bool init(gpio_num_t gpioA, gpio_num_t gpioB, bool reverseDirection = false, bool enableSwitch = false,
             gpio_num_t gpioSw = GPIO_NUM_NC, uint8_t switchActiveLevel = 0);
   void deinit();
@@ -41,8 +43,6 @@ public:
   bool isPaused() const { return paused_; }
 
 private:
-  RotaryEncoder() = default;
-
   static void IRAM_ATTR encoder_isr_handler(void *arg);
   static void monitor_task_trampoline(void *arg);
   static void sw_single_click_trampoline(void *button_handle, void *usr_data);
