@@ -61,3 +61,6 @@ struct LocoStatePayload {
   int direction;
   int functionMap;
 };
+
+// Global UI activity hook: wakes display if sleeping and resets inactivity timer.
+void app_note_user_activity();

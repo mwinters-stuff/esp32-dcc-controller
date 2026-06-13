@@ -19,11 +19,11 @@
 #include "ui/lv_msg.h"
 #include "wifi_connection.h"
 #include <DCCEXProtocol.h>
+#include <DCCMillisWrappers.h>
 #include <esp_log.h>
 #include <esp_timer.h>
 #include <lvgl.h>
 #include <lwip/apps/mdns.h>
-#include <DCCMillisWrappers.h>
 
 namespace utilities {
 extern QueueHandle_t tcp_fail_queue;
@@ -249,6 +249,34 @@ void WifiControl::loop() {
   if (stateMutex_ != nullptr && xSemaphoreTake(stateMutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
     if (dccExProtocol) {
       dccExProtocol->check();
+
+      const int pendingAddress = pendingLocoUpdateAddress_.exchange(-1, std::memory_order_relaxed);
+      if (pendingAddress > 0) {
+        dccExProtocol->requestLocoUpdate(pendingAddress);
+      }
+
+      if (pendingThrottleValid_.exchange(false, std::memory_order_acq_rel)) {
+        const int tAddr = pendingThrottleAddress_.load(std::memory_order_relaxed);
+        const int tSpeed = pendingThrottleSpeed_.load(std::memory_order_relaxed);
+        const Direction tDir = static_cast<Direction>(pendingThrottleDirection_.load(std::memory_order_relaxed));
+        auto *tLoco = Loco::getByAddress(tAddr);
+        if (tLoco == nullptr) {
+          // Keep throttle commands flowing even if roster/local lists are mid-refresh.
+          tLoco = new Loco(tAddr, LocoSource::LocoSourceEntry);
+        }
+        if (tLoco) {
+          dccExProtocol->setThrottle(tLoco, tSpeed, tDir);
+        }
+      }
+
+      const int pendingStop = pendingStopAddress_.exchange(-1, std::memory_order_relaxed);
+      if (pendingStop > 0) {
+        auto *sLoco = Loco::getByAddress(pendingStop);
+        if (sLoco) {
+          dccExProtocol->setThrottle(sLoco, 0, sLoco->getDirection());
+        }
+      }
+
       uint64_t now_ms = dccex_esp_idf_millis();
       if (now_ms - lastGetListsMs >= 1000) {
         dccExProtocol->getLists(true, true, true, true);
@@ -442,67 +470,28 @@ bool WifiControl::sendTurntableReverseCommand(int turntableId) {
   return ok;
 }
 
-// Sets loco speed/direction while holding the shared state mutex.
+// Enqueues a loco speed/direction command for dispatch by wifi_loop_task.
 bool WifiControl::setLocoThrottle(int address, int speed, Direction direction) {
-  if (stateMutex_ == nullptr) {
+  if (address <= 0) {
     return false;
   }
 
-  if (xSemaphoreTake(stateMutex_, pdMS_TO_TICKS(250)) != pdTRUE) {
-    ESP_LOGW(TAG, "setLocoThrottle skipped: state mutex unavailable");
-    return false;
-  }
-
-  bool ok = false;
-  if (currentConnectionState == CONNECTED && dccExProtocol && stream) {
-    auto *loco = Loco::getByAddress(address);
-    if (loco) {
-      int clampedSpeed = speed;
-      if (clampedSpeed < 0) {
-        clampedSpeed = 0;
-      } else if (clampedSpeed > 126) {
-        clampedSpeed = 126;
-      }
-
-      dccExProtocol->setThrottle(loco, clampedSpeed, direction);
-      ok = true;
-    } else {
-      ESP_LOGW(TAG, "setLocoThrottle ignored: unknown loco address %d", address);
-    }
-  } else {
-    ESP_LOGW(TAG, "setLocoThrottle ignored: not connected");
-  }
-
-  xSemaphoreGive(stateMutex_);
-  return ok;
+  const int clampedSpeed = speed < 0 ? 0 : (speed > 126 ? 126 : speed);
+  pendingThrottleAddress_.store(address, std::memory_order_relaxed);
+  pendingThrottleSpeed_.store(clampedSpeed, std::memory_order_relaxed);
+  pendingThrottleDirection_.store(static_cast<int>(direction), std::memory_order_relaxed);
+  pendingThrottleValid_.store(true, std::memory_order_release);
+  return true;
 }
 
-// Sends a stop command (speed 0, current direction) for the specified loco.
+// Enqueues a stop command for dispatch by wifi_loop_task.
 bool WifiControl::stopLoco(int address) {
-  if (stateMutex_ == nullptr) {
+  if (address <= 0) {
     return false;
   }
 
-  if (xSemaphoreTake(stateMutex_, pdMS_TO_TICKS(250)) != pdTRUE) {
-    ESP_LOGW(TAG, "stopLoco skipped: state mutex unavailable");
-    return false;
-  }
-
-  bool ok = false;
-  if (currentConnectionState == CONNECTED && dccExProtocol && stream) {
-    auto *loco = Loco::getByAddress(address);
-    if (loco) {
-      dccExProtocol->setThrottle(loco, 0, loco->getDirection());
-      ok = true;
-    } else {
-      ESP_LOGW(TAG, "stopLoco ignored: unknown loco address %d", address);
-    }
-  } else {
-    ESP_LOGW(TAG, "stopLoco ignored: not connected");
-  }
-
-  xSemaphoreGive(stateMutex_);
-  return ok;
+  pendingStopAddress_.store(address, std::memory_order_relaxed);
+  return true;
 }
 
 // Turns a loco function on/off while holding the shared state mutex.
@@ -540,6 +529,27 @@ bool WifiControl::setLocoFunction(int address, int function, bool on) {
 
   xSemaphoreGive(stateMutex_);
   return ok;
+}
+
+// Requests a fresh state update for the specified loco address.
+bool WifiControl::requestLocoUpdate(int address) {
+  if (address <= 0) {
+    return false;
+  }
+
+  // Prefer immediate send so list refresh can request many locos without
+  // collapsing into a single pending address.
+  if (stateMutex_ != nullptr && xSemaphoreTake(stateMutex_, pdMS_TO_TICKS(25)) == pdTRUE) {
+    if (currentConnectionState == CONNECTED && dccExProtocol && stream) {
+      dccExProtocol->requestLocoUpdate(address);
+      xSemaphoreGive(stateMutex_);
+      return true;
+    }
+    xSemaphoreGive(stateMutex_);
+  }
+
+  pendingLocoUpdateAddress_.store(address, std::memory_order_relaxed);
+  return true;
 }
 
 // FreeRTOS task spawned by startConnectToServer: resolves the IP and calls

@@ -15,8 +15,17 @@
 #include <iot_button.h>
 
 namespace {
-// Quadrature transition table: index is (prev_state << 2) | current_state.
-constexpr int8_t kQuadratureDelta[16] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0};
+// Decode quadrature transition using immediate constants only.
+// This avoids flash-backed lookup tables inside the ISR path.
+static inline int8_t IRAM_ATTR decode_quadrature_delta(uint8_t transition) {
+  if (transition == 1 || transition == 7 || transition == 8 || transition == 14) {
+    return -1;
+  }
+  if (transition == 2 || transition == 4 || transition == 11 || transition == 13) {
+    return 1;
+  }
+  return 0;
+}
 } // namespace
 
 namespace utilities {
@@ -68,7 +77,7 @@ void IRAM_ATTR RotaryEncoder::encoder_isr_handler(void *arg) {
   const uint8_t currentState = static_cast<uint8_t>((a << 1) | b);
   const uint8_t transition = static_cast<uint8_t>((self->prevState_ << 2) | currentState);
 
-  int8_t delta = kQuadratureDelta[transition];
+  int8_t delta = decode_quadrature_delta(transition);
   if (self->reverseDirection_) {
     delta = -delta;
   }
@@ -299,8 +308,12 @@ bool RotaryEncoder::init(gpio_num_t gpioA, gpio_num_t gpioB, bool reverseDirecti
   }
 
   const esp_err_t isrServiceErr = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
-  if (isrServiceErr != ESP_OK && isrServiceErr != ESP_ERR_INVALID_STATE) {
-    ESP_LOGE(TAG, "Failed to install GPIO ISR service");
+  if (isrServiceErr == ESP_OK) {
+    ESP_LOGI(TAG, "GPIO ISR service installed");
+  } else if (isrServiceErr == ESP_ERR_INVALID_STATE) {
+    ESP_LOGI(TAG, "GPIO ISR service already installed (reusing for multiple encoders)");
+  } else {
+    ESP_LOGE(TAG, "Failed to install GPIO ISR service: %s", esp_err_to_name(isrServiceErr));
     return false;
   }
 

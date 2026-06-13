@@ -9,7 +9,7 @@
 #include <esp_log.h>
 
 LGFX DisplayManager::gfx;
-static const char *TAG = "DISPLAY_MANAGER";
+// static const char *TAG = "DISPLAY_MANAGER";
 
 // LVGL flush callback: pushes a rendered rectangle to the display via
 // LovyanGFX DMA. Begins a write transaction on the first call of a frame and

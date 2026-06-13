@@ -1,19 +1,4 @@
-menu "Example Configuration"
-
-    config EXAMPLE_SCAN_LIST_SIZE
-        int "Max size of scan list"
-        range 0 20
-        default 10
-        help
-            The size of array that will be used to retrieve the list of access points.
-
-    config EXAMPLE_USE_SCAN_CHANNEL_BITMAP
-        bool "Scan only non overlapping channels using Channel bitmap"
-        default 0
-        help
-            Enable this to scan only the non overlapping channels i.e 1,6,11 by mentioning a channel bitmap
-            in scan config. If you wish to scan a different set of specific channels, please edit the channel_list
-            array in scan.c. Channels for a 2.4 ghz network range should range from 1-14.
+menu "DCC-Controller Configuration"
 
     config ROTARY_ENCODER_ENABLE
         bool "Enable rotary encoder"
@@ -67,4 +52,59 @@ menu "Example Configuration"
         depends on ROTARY_ENCODER_SW_ENABLE
         help
             0: active low, 1: active high.
+
+    config ROTARY_ENCODER_2_ENABLE
+        bool "Enable second rotary encoder (roster throttle)"
+        default n
+        depends on ROTARY_ENCODER_ENABLE
+        help
+            Enable a second quadrature rotary encoder dedicated to roster throttle control.
+
+    config ROTARY_ENCODER_2_GPIO_A
+        int "Second rotary encoder GPIO A"
+        range 0 48
+        default 17
+        depends on ROTARY_ENCODER_2_ENABLE
+        help
+            GPIO number connected to second encoder channel A.
+
+    config ROTARY_ENCODER_2_GPIO_B
+        int "Second rotary encoder GPIO B"
+        range 0 48
+        default 18
+        depends on ROTARY_ENCODER_2_ENABLE
+        help
+            GPIO number connected to second encoder channel B.
+
+    config ROTARY_ENCODER_2_DEFAULT_DIRECTION
+        int "Second rotary encoder default direction"
+        range 0 1
+        default 0
+        depends on ROTARY_ENCODER_2_ENABLE
+        help
+            0: clockwise increases count, 1: clockwise decreases count.
+
+    config ROTARY_ENCODER_2_SW_ENABLE
+        bool "Enable second rotary encoder SW button"
+        default y
+        depends on ROTARY_ENCODER_2_ENABLE
+        help
+            Enable support for the second encoder center push button (SW).
+
+    config ROTARY_ENCODER_2_GPIO_SW
+        int "Second rotary encoder GPIO SW"
+        range 0 48
+        default 21
+        depends on ROTARY_ENCODER_2_SW_ENABLE
+        help
+            GPIO number connected to second encoder push switch (SW).
+
+    config ROTARY_ENCODER_2_SW_ACTIVE_LEVEL
+        int "Second rotary encoder SW active level"
+        range 0 1
+        default 0
+        depends on ROTARY_ENCODER_2_SW_ENABLE
+        help
+            0: active low, 1: active high.
+
 endmenu

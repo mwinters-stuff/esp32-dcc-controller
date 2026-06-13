@@ -12,8 +12,27 @@
 #include "definitions.h"
 #include <DCCEXLoco.h>
 #include <cstdio>
+#include <esp_timer.h>
 #include <memory>
 #include <vector>
+
+namespace {
+constexpr int64_t kThrottleMinStepIntervalUs = 20 * 1000;
+
+
+int throttle_step_for_speed(int speed) {
+  if (speed <= 10) {
+    return 1;
+  }
+  if (speed <= 20) {
+    return 2;
+  }
+  if (speed <= 50) {
+    return 3;
+  }
+  return 5;
+}
+} // namespace
 
 namespace display {
 
@@ -27,6 +46,7 @@ void RosterListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
   listItems.clear();
   focusedIndex = -1;
   expandedAddress = -1;
+  locoPollCursor_ = 0;
 
   // Title
   lbl_title = makeLabel(lvObj_, "Roster", LV_ALIGN_TOP_MID, 0, 8, "label.title", &lv_font_montserrat_30);
@@ -69,6 +89,7 @@ void RosterListScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen
 
   refreshList();
   rotaryAttach();
+  attachThrottleEncoder();
 }
 
 // Clears and repopulates the list widget from the latest roster data.
@@ -112,6 +133,8 @@ void RosterListScreen::refreshList() {
             requestFunction(address, function, on);
           });
       listItems.push_back(listItem);
+      // One-shot sync: request current server state for each roster item.
+      wifiControl->requestLocoUpdate(loco->getAddress());
     } else {
       ESP_LOGI(TAG, "Skipping non-roster loco with ID=%d", loco->getAddress());
     }
@@ -121,6 +144,7 @@ void RosterListScreen::refreshList() {
   if (listItems.empty()) {
     focusedIndex = -1;
     expandedAddress = -1;
+    locoPollCursor_ = 0;
   } else {
     focusedIndex = 0;
     expandedAddress = -1;
@@ -150,11 +174,13 @@ void RosterListScreen::unsubscribeAll() {
 void RosterListScreen::cleanUp() {
   ESP_LOGI(TAG, "Cleaning up RosterListScreen");
   isCleanedUp = true;
+  detachThrottleEncoder();
   rotaryDetach();
   unsubscribeAll();
   listItems.clear();
   focusedIndex = -1;
   expandedAddress = -1;
+  locoPollCursor_ = 0;
   lbl_title = nullptr;
   list_roster = nullptr;
   btn_back = nullptr;
@@ -281,21 +307,19 @@ void RosterListScreen::applyLocoState(int address, int speed, Direction directio
 }
 
 void RosterListScreen::requestThrottle(int address, int speed, Direction direction) {
+  auto *loco = Loco::getByAddress(address);
+  const int currentSpeed = loco ? loco->getSpeed() : speed;
+  const Direction currentDirection = loco ? loco->getDirection() : direction;
+  if (currentDirection != direction && currentSpeed > 0) {
+    ESP_LOGI(TAG, "Ignoring direction change for loco %d while speed is %d", address, currentSpeed);
+    return;
+  }
+
   auto wifiControl = utilities::WifiControl::instance();
   if (!wifiControl->setLocoThrottle(address, speed, direction)) {
     ESP_LOGW(TAG, "Cannot control loco %d while disconnected", address);
     return;
   }
-
-  auto *loco = Loco::getByAddress(address);
-  int functionMap = 0;
-  if (loco) {
-    loco->setSpeed(speed);
-    loco->setDirection(direction);
-    functionMap = loco->getFunctionStates();
-  }
-
-  applyLocoState(address, speed, direction, functionMap);
 }
 
 void RosterListScreen::requestStop(int address) {
@@ -304,17 +328,6 @@ void RosterListScreen::requestStop(int address) {
     ESP_LOGW(TAG, "Cannot stop loco %d while disconnected", address);
     return;
   }
-
-  auto *loco = Loco::getByAddress(address);
-  Direction direction = Forward;
-  int functionMap = 0;
-  if (loco) {
-    direction = loco->getDirection();
-    loco->setSpeed(0);
-    functionMap = loco->getFunctionStates();
-  }
-
-  applyLocoState(address, 0, direction, functionMap);
 }
 
 void RosterListScreen::requestFunction(int address, int function, bool on) {
@@ -342,5 +355,213 @@ void RosterListScreen::requestFunction(int address, int function, bool on) {
 
   applyLocoState(address, speed, direction, functionMap);
 }
+
+int RosterListScreen::activeAddressForThrottle() const {
+  if (expandedAddress >= 0) {
+    return expandedAddress;
+  }
+
+  if (focusedIndex >= 0 && focusedIndex < static_cast<int>(listItems.size())) {
+    return listItems[focusedIndex]->getAddress();
+  }
+
+  if (!listItems.empty()) {
+    return listItems.front()->getAddress();
+  }
+
+  return -1;
+}
+
+void RosterListScreen::attachThrottleEncoder() {
+#if CONFIG_ROTARY_ENCODER_2_ENABLE
+  pendingThrottleSteps_.store(0, std::memory_order_relaxed);
+  lastThrottleStepUs_ = esp_timer_get_time();
+
+  const bool initOk = throttleEncoder_.init(
+      static_cast<gpio_num_t>(CONFIG_ROTARY_ENCODER_2_GPIO_A), static_cast<gpio_num_t>(CONFIG_ROTARY_ENCODER_2_GPIO_B),
+      CONFIG_ROTARY_ENCODER_2_DEFAULT_DIRECTION == 1,
+#if CONFIG_ROTARY_ENCODER_2_SW_ENABLE
+      true, static_cast<gpio_num_t>(CONFIG_ROTARY_ENCODER_2_GPIO_SW), CONFIG_ROTARY_ENCODER_2_SW_ACTIVE_LEVEL
+#else
+      false, GPIO_NUM_NC, 0
+#endif
+  );
+
+  if (!initOk) {
+    ESP_LOGW(TAG, "Failed to initialize second rotary encoder");
+    throttleEncoderAttached_ = false;
+    return;
+  }
+
+  throttleEncoder_.setCallbacks(
+      &RosterListScreen::throttle_rotate_trampoline, &RosterListScreen::throttle_click_trampoline,
+      &RosterListScreen::throttle_long_press_trampoline, this, &RosterListScreen::throttle_double_click_trampoline);
+
+  throttleEncoder_.setActivityCallback(
+      [](void *) {
+        app_note_user_activity();
+      },
+      nullptr);
+
+  throttleEncoderAttached_ = true;
+  ESP_LOGI(TAG, "Second rotary encoder attached for roster throttle");
+#endif
+}
+
+void RosterListScreen::detachThrottleEncoder() {
+#if CONFIG_ROTARY_ENCODER_2_ENABLE
+  if (!throttleEncoderAttached_) {
+    return;
+  }
+
+  pendingThrottleSteps_.store(0, std::memory_order_relaxed);
+  throttleEncoder_.clearCallbacks(this);
+  throttleEncoder_.setActivityCallback(nullptr, nullptr);
+  throttleEncoder_.deinit();
+  throttleEncoderAttached_ = false;
+#endif
+}
+
+void RosterListScreen::processPendingThrottleSteps() {
+  if (isCleanedUp) {
+    pendingThrottleSteps_.store(0, std::memory_order_relaxed);
+    return;
+  }
+
+  const int address = activeAddressForThrottle();
+  if (address < 0) {
+    pendingThrottleSteps_.store(0, std::memory_order_relaxed);
+    return;
+  }
+
+  int32_t steps = pendingThrottleSteps_.exchange(0, std::memory_order_relaxed);
+  if (steps == 0) {
+    return;
+  }
+
+  auto *loco = Loco::getByAddress(address);
+  int speed = loco ? loco->getSpeed() : 0;
+  Direction direction = loco ? loco->getDirection() : Forward;
+
+  int newSpeed = speed;
+  const int directionStep = steps > 0 ? 1 : -1;
+  int remaining = steps > 0 ? steps : -steps;
+  while (remaining-- > 0) {
+    const int stepAmount = throttle_step_for_speed(newSpeed);
+    newSpeed += directionStep * stepAmount;
+    if (newSpeed < 0) {
+      newSpeed = 0;
+      break;
+    }
+    if (newSpeed > 126) {
+      newSpeed = 126;
+      break;
+    }
+  }
+
+  requestThrottle(address, newSpeed, direction);
+}
+
+void RosterListScreen::handleThrottleEncoderClick() {
+  if (isCleanedUp) {
+    return;
+  }
+
+  const int address = activeAddressForThrottle();
+  if (address < 0) {
+    return;
+  }
+
+  auto *loco = Loco::getByAddress(address);
+  const int speed = loco ? loco->getSpeed() : 0;
+  const Direction direction = loco ? loco->getDirection() : Forward;
+  const Direction toggledDirection = direction == Forward ? Reverse : Forward;
+  requestThrottle(address, speed, toggledDirection);
+}
+
+void RosterListScreen::handleThrottleEncoderLongPress() {
+  if (isCleanedUp) {
+    return;
+  }
+
+  const int address = activeAddressForThrottle();
+  if (address < 0) {
+    return;
+  }
+
+  requestStop(address);
+}
+
+void RosterListScreen::throttle_rotate_trampoline(int32_t delta, void *userData) {
+  auto *self = static_cast<RosterListScreen *>(userData);
+  if (!self || self->isCleanedUp) {
+    return;
+  }
+
+  const int64_t nowUs = esp_timer_get_time();
+  if ((nowUs - self->lastThrottleStepUs_) < kThrottleMinStepIntervalUs) {
+    return;
+  }
+  self->lastThrottleStepUs_ = nowUs;
+
+  self->pendingThrottleSteps_.fetch_add(delta, std::memory_order_relaxed);
+  lv_async_call(&RosterListScreen::throttle_process_trampoline, self);
+}
+
+void RosterListScreen::throttle_click_trampoline(void *userData) {
+  auto *self = static_cast<RosterListScreen *>(userData);
+  if (!self || self->isCleanedUp) {
+    return;
+  }
+
+  lv_async_call(
+      [](void *ctx) {
+        auto *screen = static_cast<RosterListScreen *>(ctx);
+        if (screen && !screen->isCleanedUp) {
+          screen->handleThrottleEncoderClick();
+        }
+      },
+      self);
+}
+
+void RosterListScreen::throttle_double_click_trampoline(void *userData) {
+  auto *self = static_cast<RosterListScreen *>(userData);
+  if (!self || self->isCleanedUp) {
+    return;
+  }
+
+  lv_async_call(
+      [](void *ctx) {
+        auto *screen = static_cast<RosterListScreen *>(ctx);
+        if (screen && !screen->isCleanedUp) {
+          screen->handleThrottleEncoderClick();
+        }
+      },
+      self);
+}
+
+void RosterListScreen::throttle_long_press_trampoline(void *userData) {
+  auto *self = static_cast<RosterListScreen *>(userData);
+  if (!self || self->isCleanedUp) {
+    return;
+  }
+
+  lv_async_call(
+      [](void *ctx) {
+        auto *screen = static_cast<RosterListScreen *>(ctx);
+        if (screen && !screen->isCleanedUp) {
+          screen->handleThrottleEncoderLongPress();
+        }
+      },
+      self);
+}
+
+void RosterListScreen::throttle_process_trampoline(void *userData) {
+  auto *self = static_cast<RosterListScreen *>(userData);
+  if (self) {
+    self->processPendingThrottleSteps();
+  }
+}
+
 
 } // namespace display
