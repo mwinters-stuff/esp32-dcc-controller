@@ -58,7 +58,7 @@ void WifiConnectScreen::wifi_connected_callback(lv_msg_t *msg) {
               utilities::WifiHandler::instance()->saveConfiguration();
               vTaskDelete(nullptr);
             },
-            "wifi_save_cfg", 2048, nullptr, tskIDLE_PRIORITY, nullptr);
+            "wifi_save_cfg", 4096, nullptr, tskIDLE_PRIORITY, nullptr);
 
         lv_timer_delete(t);
       },
@@ -138,7 +138,6 @@ void WifiConnectScreen::cleanUp() {
     lv_msg_unsubscribe(reshow_screen_sub);
     reshow_screen_sub = nullptr;
   }
-  lv_obj_clean(lvObj_);
 
   lbl_title = nullptr;
   lbl_subtitle = nullptr;
@@ -151,6 +150,8 @@ void WifiConnectScreen::cleanUp() {
   lbl_spinner = nullptr;
   kb_keyboard = nullptr;
   lbl_status2 = nullptr;
+
+  lv_obj_clean(lvObj_);
 }
 
 // Stores the target SSID before show() is called.
@@ -238,7 +239,8 @@ void WifiConnectScreen::event_keyboard_callback(lv_event_t *e) {
     if (isPasswordVisible()) {
       // If password is currently visible, hide it before connecting
       lv_textarea_set_password_mode(ta_password, true);
-      lv_label_set_text(bs_password_show, LV_SYMBOL_EYE_OPEN);
+      lv_obj_t *eye_lbl = lv_obj_get_child(bs_password_show, 0);
+      lv_label_set_text(eye_lbl, LV_SYMBOL_EYE_OPEN);
     }
 
     lv_label_set_text(lbl_status, "Connecting...");

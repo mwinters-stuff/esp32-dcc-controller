@@ -30,6 +30,7 @@ private:
   static void rotary_process_trampoline(void *userData);
 
   std::atomic<int32_t> pendingRotateSteps_{0};
+  std::atomic<bool> rotateProcessQueued_{false};
 };
 
 } // namespace display

@@ -18,7 +18,19 @@
 
 namespace {
 constexpr int64_t kThrottleMinStepIntervalUs = 20 * 1000;
+constexpr UBaseType_t kThrottleEventQueueLen = 32;
 
+enum ThrottleEventType : int {
+  ThrottleEventRotate = 1,
+  ThrottleEventClick = 2,
+  ThrottleEventDoubleClick = 3,
+  ThrottleEventLongPress = 4,
+};
+
+struct ThrottleEvent {
+  int type;
+  int32_t delta;
+};
 
 int throttle_step_for_speed(int speed) {
   if (speed <= 10) {
@@ -200,6 +212,7 @@ void RosterListScreen::button_back_callback(lv_event_t *e) {
 }
 
 void RosterListScreen::selectAddress(int address) {
+  const int previousExpandedAddress = expandedAddress;
   if (expandedAddress == address) {
     expandedAddress = -1;
   } else {
@@ -213,13 +226,19 @@ void RosterListScreen::selectAddress(int address) {
     }
   }
 
+  ESP_LOGI(TAG, "selectAddress addr=%d prevExpanded=%d newExpanded=%d focusedIndex=%d itemCount=%u", address,
+           previousExpandedAddress, expandedAddress, focusedIndex, static_cast<unsigned>(listItems.size()));
+
   updateExpandedState();
   updateFocusedState();
+  updateActiveThrottleAddress();
 }
 
 void RosterListScreen::updateExpandedState() {
   for (const auto &item : listItems) {
     const bool expanded = expandedAddress >= 0 && item->getAddress() == expandedAddress;
+    ESP_LOGI(TAG, "updateExpandedState item=%d expanded=%d targetExpanded=%d", item->getAddress(), expanded ? 1 : 0,
+             expandedAddress);
     item->setExpanded(expanded);
     if (expanded) {
       lv_obj_scroll_to_view(item->getLvObj(), LV_ANIM_OFF);
@@ -281,6 +300,7 @@ void RosterListScreen::moveFocus(int direction) {
 
   focusedIndex = index;
   updateFocusedState();
+  updateActiveThrottleAddress();
 }
 
 void RosterListScreen::rotaryMoveFocus(int direction) { moveFocus(direction); }
@@ -357,24 +377,29 @@ void RosterListScreen::requestFunction(int address, int function, bool on) {
 }
 
 int RosterListScreen::activeAddressForThrottle() const {
+  int address = -1;
   if (expandedAddress >= 0) {
-    return expandedAddress;
+    address = expandedAddress;
+  } else if (focusedIndex >= 0 && focusedIndex < static_cast<int>(listItems.size())) {
+    address = listItems[focusedIndex]->getAddress();
+  } else if (!listItems.empty()) {
+    address = listItems.front()->getAddress();
   }
 
-  if (focusedIndex >= 0 && focusedIndex < static_cast<int>(listItems.size())) {
-    return listItems[focusedIndex]->getAddress();
-  }
+  ESP_LOGI(TAG, "activeAddressForThrottle expanded=%d focusedIndex=%d result=%d itemCount=%u", expandedAddress,
+           focusedIndex, address, static_cast<unsigned>(listItems.size()));
+  return address;
+}
 
-  if (!listItems.empty()) {
-    return listItems.front()->getAddress();
-  }
-
-  return -1;
+void RosterListScreen::updateActiveThrottleAddress() {
+  activeThrottleAddress_.store(activeAddressForThrottle(), std::memory_order_relaxed);
 }
 
 void RosterListScreen::attachThrottleEncoder() {
 #if CONFIG_ROTARY_ENCODER_2_ENABLE
   pendingThrottleSteps_.store(0, std::memory_order_relaxed);
+  throttleProcessQueued_.store(false, std::memory_order_relaxed);
+  updateActiveThrottleAddress();
   lastThrottleStepUs_ = esp_timer_get_time();
 
   const bool initOk = throttleEncoder_.init(
@@ -403,8 +428,32 @@ void RosterListScreen::attachThrottleEncoder() {
       },
       nullptr);
 
+  throttleEventQueue_ = xQueueCreate(kThrottleEventQueueLen, sizeof(ThrottleEvent));
+  if (throttleEventQueue_ == nullptr) {
+    ESP_LOGW(TAG, "Failed to create encoder-2 event queue");
+    throttleEncoder_.clearCallbacks(this);
+    throttleEncoder_.setActivityCallback(nullptr, nullptr);
+    throttleEncoder_.deinit();
+    throttleEncoderAttached_ = false;
+    return;
+  }
+
+  throttleEventTaskRunning_.store(true, std::memory_order_relaxed);
+  if (xTaskCreate(&RosterListScreen::throttle_event_task_trampoline, "roster_thr2_evt", 4096, this,
+                  tskIDLE_PRIORITY + 1, &throttleEventTask_) != pdPASS) {
+    ESP_LOGW(TAG, "Failed to create encoder-2 event task");
+    throttleEventTaskRunning_.store(false, std::memory_order_relaxed);
+    vQueueDelete(throttleEventQueue_);
+    throttleEventQueue_ = nullptr;
+    throttleEncoder_.clearCallbacks(this);
+    throttleEncoder_.setActivityCallback(nullptr, nullptr);
+    throttleEncoder_.deinit();
+    throttleEncoderAttached_ = false;
+    return;
+  }
+
   throttleEncoderAttached_ = true;
-  ESP_LOGI(TAG, "Second rotary encoder attached for roster throttle");
+  ESP_LOGI(TAG, "Second rotary encoder attached for roster throttle (dedicated queue task)");
 #endif
 }
 
@@ -415,6 +464,16 @@ void RosterListScreen::detachThrottleEncoder() {
   }
 
   pendingThrottleSteps_.store(0, std::memory_order_relaxed);
+  throttleProcessQueued_.store(false, std::memory_order_relaxed);
+  throttleEventTaskRunning_.store(false, std::memory_order_relaxed);
+  if (throttleEventTask_ != nullptr) {
+    vTaskDelete(throttleEventTask_);
+    throttleEventTask_ = nullptr;
+  }
+  if (throttleEventQueue_ != nullptr) {
+    vQueueDelete(throttleEventQueue_);
+    throttleEventQueue_ = nullptr;
+  }
   throttleEncoder_.clearCallbacks(this);
   throttleEncoder_.setActivityCallback(nullptr, nullptr);
   throttleEncoder_.deinit();
@@ -422,7 +481,82 @@ void RosterListScreen::detachThrottleEncoder() {
 #endif
 }
 
+bool RosterListScreen::enqueueThrottleEvent(int type, int32_t delta) {
+  if (throttleEventQueue_ == nullptr || !throttleEventTaskRunning_.load(std::memory_order_relaxed)) {
+    return false;
+  }
+  ThrottleEvent ev{type, delta};
+  return xQueueSend(throttleEventQueue_, &ev, 0) == pdTRUE;
+}
+
+void RosterListScreen::throttle_event_task_trampoline(void *arg) {
+  auto *self = static_cast<RosterListScreen *>(arg);
+  if (self) {
+    self->throttleEventTask();
+  }
+  vTaskDelete(nullptr);
+}
+
+void RosterListScreen::throttleEventTask() {
+  while (throttleEventTaskRunning_.load(std::memory_order_relaxed)) {
+    ThrottleEvent ev{};
+    if (xQueueReceive(throttleEventQueue_, &ev, pdMS_TO_TICKS(50)) != pdTRUE) {
+      continue;
+    }
+
+    if (isCleanedUp) {
+      continue;
+    }
+
+    const int address = activeThrottleAddress_.load(std::memory_order_relaxed);
+    if (address < 0) {
+      continue;
+    }
+
+    if (ev.type == ThrottleEventRotate) {
+      auto *loco = Loco::getByAddress(address);
+      int speed = loco ? loco->getSpeed() : 0;
+      Direction direction = loco ? loco->getDirection() : Forward;
+
+      int newSpeed = speed;
+      const int directionStep = ev.delta > 0 ? 1 : -1;
+      int remaining = ev.delta > 0 ? ev.delta : -ev.delta;
+      while (remaining-- > 0) {
+        const int stepAmount = throttle_step_for_speed(newSpeed);
+        newSpeed += directionStep * stepAmount;
+        if (newSpeed < 0) {
+          newSpeed = 0;
+          break;
+        }
+        if (newSpeed > 126) {
+          newSpeed = 126;
+          break;
+        }
+      }
+
+      requestThrottle(address, newSpeed, direction);
+      continue;
+    }
+
+    if (ev.type == ThrottleEventClick || ev.type == ThrottleEventDoubleClick) {
+      auto *loco = Loco::getByAddress(address);
+      const int speed = loco ? loco->getSpeed() : 0;
+      const Direction direction = loco ? loco->getDirection() : Forward;
+      const Direction toggledDirection = direction == Forward ? Reverse : Forward;
+      requestThrottle(address, speed, toggledDirection);
+      continue;
+    }
+
+    if (ev.type == ThrottleEventLongPress) {
+      requestStop(address);
+      continue;
+    }
+  }
+}
+
 void RosterListScreen::processPendingThrottleSteps() {
+  throttleProcessQueued_.store(false, std::memory_order_relaxed);
+
   if (isCleanedUp) {
     pendingThrottleSteps_.store(0, std::memory_order_relaxed);
     return;
@@ -437,6 +571,17 @@ void RosterListScreen::processPendingThrottleSteps() {
   int32_t steps = pendingThrottleSteps_.exchange(0, std::memory_order_relaxed);
   if (steps == 0) {
     return;
+  }
+
+  ESP_LOGI(TAG, "processPendingThrottleSteps rawSteps=%ld", static_cast<long>(steps));
+
+  constexpr int32_t kMaxStepsPerDispatch = 12;
+  if (steps > kMaxStepsPerDispatch) {
+    pendingThrottleSteps_.fetch_add(steps - kMaxStepsPerDispatch, std::memory_order_relaxed);
+    steps = kMaxStepsPerDispatch;
+  } else if (steps < -kMaxStepsPerDispatch) {
+    pendingThrottleSteps_.fetch_add(steps + kMaxStepsPerDispatch, std::memory_order_relaxed);
+    steps = -kMaxStepsPerDispatch;
   }
 
   auto *loco = Loco::getByAddress(address);
@@ -459,7 +604,17 @@ void RosterListScreen::processPendingThrottleSteps() {
     }
   }
 
+  ESP_LOGI(TAG, "processPendingThrottleSteps address=%d speed=%d newSpeed=%d direction=%d", address, speed, newSpeed,
+           static_cast<int>(direction));
+
   requestThrottle(address, newSpeed, direction);
+
+  if (pendingThrottleSteps_.load(std::memory_order_relaxed) != 0 && !throttleProcessQueued_.exchange(true)) {
+    if (lv_async_call(&RosterListScreen::throttle_process_trampoline, this) != LV_RESULT_OK) {
+      throttleProcessQueued_.store(false, std::memory_order_relaxed);
+      ESP_LOGW(TAG, "throttle process requeue failed");
+    }
+  }
 }
 
 void RosterListScreen::handleThrottleEncoderClick() {
@@ -476,6 +631,8 @@ void RosterListScreen::handleThrottleEncoderClick() {
   const int speed = loco ? loco->getSpeed() : 0;
   const Direction direction = loco ? loco->getDirection() : Forward;
   const Direction toggledDirection = direction == Forward ? Reverse : Forward;
+  ESP_LOGI(TAG, "handleThrottleEncoderClick address=%d speed=%d direction=%d toggled=%d", address, speed,
+           static_cast<int>(direction), static_cast<int>(toggledDirection));
   requestThrottle(address, speed, toggledDirection);
 }
 
@@ -488,6 +645,8 @@ void RosterListScreen::handleThrottleEncoderLongPress() {
   if (address < 0) {
     return;
   }
+
+  ESP_LOGI(TAG, "handleThrottleEncoderLongPress address=%d", address);
 
   requestStop(address);
 }
@@ -504,8 +663,10 @@ void RosterListScreen::throttle_rotate_trampoline(int32_t delta, void *userData)
   }
   self->lastThrottleStepUs_ = nowUs;
 
-  self->pendingThrottleSteps_.fetch_add(delta, std::memory_order_relaxed);
-  lv_async_call(&RosterListScreen::throttle_process_trampoline, self);
+  ESP_LOGI(TAG, "throttle_rotate_trampoline delta=%ld", static_cast<long>(delta));
+  if (!self->enqueueThrottleEvent(ThrottleEventRotate, delta)) {
+    ESP_LOGW(TAG, "encoder-2 rotate event dropped");
+  }
 }
 
 void RosterListScreen::throttle_click_trampoline(void *userData) {
@@ -514,14 +675,9 @@ void RosterListScreen::throttle_click_trampoline(void *userData) {
     return;
   }
 
-  lv_async_call(
-      [](void *ctx) {
-        auto *screen = static_cast<RosterListScreen *>(ctx);
-        if (screen && !screen->isCleanedUp) {
-          screen->handleThrottleEncoderClick();
-        }
-      },
-      self);
+  if (!self->enqueueThrottleEvent(ThrottleEventClick, 0)) {
+    ESP_LOGW(TAG, "encoder-2 click event dropped");
+  }
 }
 
 void RosterListScreen::throttle_double_click_trampoline(void *userData) {
@@ -530,14 +686,9 @@ void RosterListScreen::throttle_double_click_trampoline(void *userData) {
     return;
   }
 
-  lv_async_call(
-      [](void *ctx) {
-        auto *screen = static_cast<RosterListScreen *>(ctx);
-        if (screen && !screen->isCleanedUp) {
-          screen->handleThrottleEncoderClick();
-        }
-      },
-      self);
+  if (!self->enqueueThrottleEvent(ThrottleEventDoubleClick, 0)) {
+    ESP_LOGW(TAG, "encoder-2 double-click event dropped");
+  }
 }
 
 void RosterListScreen::throttle_long_press_trampoline(void *userData) {
@@ -546,14 +697,9 @@ void RosterListScreen::throttle_long_press_trampoline(void *userData) {
     return;
   }
 
-  lv_async_call(
-      [](void *ctx) {
-        auto *screen = static_cast<RosterListScreen *>(ctx);
-        if (screen && !screen->isCleanedUp) {
-          screen->handleThrottleEncoderLongPress();
-        }
-      },
-      self);
+  if (!self->enqueueThrottleEvent(ThrottleEventLongPress, 0)) {
+    ESP_LOGW(TAG, "encoder-2 long-press event dropped");
+  }
 }
 
 void RosterListScreen::throttle_process_trampoline(void *userData) {
@@ -562,6 +708,5 @@ void RosterListScreen::throttle_process_trampoline(void *userData) {
     self->processPendingThrottleSteps();
   }
 }
-
 
 } // namespace display

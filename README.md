@@ -202,3 +202,10 @@ Screenshots can be taken by going to the ip address with port number 8080. There
 of the current screen and download it. The screenshots are saved as `screenshot_latest.ppm`.
 
 [screenshot_latest.ppm](docs/screenshot_latest.ppm)
+
+# delete nvs for testing
+
+```
+source /home/mathew/.espressif/tools/activate_idf_v5.5.4.sh
+esptool.py -p /dev/ttyACM0 erase_region 0x7D6000 0x8000
+```

@@ -43,7 +43,7 @@ public:
   bool isPaused() const { return paused_; }
 
 private:
-  static void IRAM_ATTR encoder_isr_handler(void *arg);
+  static void encoder_isr_handler(void *arg) IRAM_ATTR;
   static void monitor_task_trampoline(void *arg);
   static void sw_single_click_trampoline(void *button_handle, void *usr_data);
   static void sw_double_click_trampoline(void *button_handle, void *usr_data);

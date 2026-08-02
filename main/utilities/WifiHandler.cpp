@@ -87,7 +87,7 @@ void WifiHandler::wifi_event_handler(void *arg, esp_event_base_t event_base, int
     xEventGroupSetBits(wifi_event_group, WIFI_FAIL_BIT);
     stopScreenshotHttpServer();
 
-    if (!self->manualConnectInProgress) {
+    if (self->manualConnectInProgress) {
       ESP_LOGI(TAG, "Manual connect in progress, skipping disconnect handling");
       lv_async_call(
           [](void *arg) {

@@ -13,6 +13,7 @@
 #include <esp_err.h>
 #include <esp_log.h>
 #include <iot_button.h>
+#include <soc/gpio_struct.h>
 
 namespace {
 // Decode quadrature transition using immediate constants only.
@@ -25,6 +26,14 @@ static inline int8_t IRAM_ATTR decode_quadrature_delta(uint8_t transition) {
     return 1;
   }
   return 0;
+}
+
+static inline uint8_t IRAM_ATTR gpio_level_isr_safe(gpio_num_t pin) {
+  const uint32_t pinNum = static_cast<uint32_t>(pin);
+  if (pinNum < 32U) {
+    return static_cast<uint8_t>((GPIO.in >> pinNum) & 0x1U);
+  }
+  return static_cast<uint8_t>((GPIO.in1.val >> (pinNum - 32U)) & 0x1U);
 }
 } // namespace
 
@@ -70,10 +79,10 @@ void RotaryEncoder::sw_long_press_trampoline(void *button_handle, void *usr_data
 
 // GPIO ISR handler: reads the A/B pin states, looks up the quadrature delta
 // and increments the encoder's pending count. Placed in IRAM for low latency.
-void IRAM_ATTR RotaryEncoder::encoder_isr_handler(void *arg) {
+void RotaryEncoder::encoder_isr_handler(void *arg) {
   auto *self = static_cast<RotaryEncoder *>(arg);
-  const uint8_t a = static_cast<uint8_t>(gpio_get_level(self->gpioA_));
-  const uint8_t b = static_cast<uint8_t>(gpio_get_level(self->gpioB_));
+  const uint8_t a = gpio_level_isr_safe(self->gpioA_);
+  const uint8_t b = gpio_level_isr_safe(self->gpioB_);
   const uint8_t currentState = static_cast<uint8_t>((a << 1) | b);
   const uint8_t transition = static_cast<uint8_t>((self->prevState_ << 2) | currentState);
 
@@ -142,11 +151,15 @@ void RotaryEncoder::setCallbacks(RotateCallback rotateCb, ClickCallback clickCb,
   longPressCallback_ = longPressCb;
   callbackUserData_ = userData;
   portEXIT_CRITICAL(&callbackMux_);
+
+  ESP_LOGI(TAG, "setCallbacks self=%p rotate=%d click=%d dbl=%d long=%d user=%p", this, rotateCb != nullptr,
+           clickCb != nullptr, doubleClickCb != nullptr, longPressCb != nullptr, userData);
 }
 
 // Removes all callbacks registered under userData. Called by screens during
 // cleanUp so stale pointers are not invoked after the screen is destroyed.
 void RotaryEncoder::clearCallbacks(void *userData) {
+  bool cleared = false;
   portENTER_CRITICAL(&callbackMux_);
   if (userData == nullptr || callbackUserData_ == userData) {
     rotateCallback_ = nullptr;
@@ -154,8 +167,11 @@ void RotaryEncoder::clearCallbacks(void *userData) {
     doubleClickCallback_ = nullptr;
     longPressCallback_ = nullptr;
     callbackUserData_ = nullptr;
+    cleared = true;
   }
   portEXIT_CRITICAL(&callbackMux_);
+
+  ESP_LOGI(TAG, "clearCallbacks self=%p requestedUser=%p cleared=%d", this, userData, cleared ? 1 : 0);
 }
 
 // Sets the global activity callback invoked on any encoder event (rotation or
@@ -171,6 +187,7 @@ void RotaryEncoder::setActivityCallback(ActivityCallback cb, void *userData) {
 // callbacks, then fires the activity callback.
 void RotaryEncoder::emitRotate(int32_t delta) {
   if (paused_) {
+    ESP_LOGI(TAG, "emitRotate skipped (paused) self=%p delta=%ld", this, static_cast<long>(delta));
     return;
   }
 
@@ -190,7 +207,10 @@ void RotaryEncoder::emitRotate(int32_t delta) {
     actCb(actData);
   }
   if (rotateCb != nullptr) {
+    ESP_LOGI(TAG, "emitRotate dispatch self=%p delta=%ld user=%p", this, static_cast<long>(delta), userData);
     rotateCb(delta, userData);
+  } else {
+    ESP_LOGI(TAG, "emitRotate skipped (no callback) self=%p delta=%ld", this, static_cast<long>(delta));
   }
 }
 
@@ -198,6 +218,7 @@ void RotaryEncoder::emitRotate(int32_t delta) {
 // activity callback.
 void RotaryEncoder::emitClick() {
   if (paused_) {
+    ESP_LOGI(TAG, "emitClick skipped (paused) self=%p", this);
     return;
   }
 
@@ -217,7 +238,10 @@ void RotaryEncoder::emitClick() {
     actCb(actData);
   }
   if (clickCb != nullptr) {
+    ESP_LOGI(TAG, "emitClick dispatch self=%p user=%p", this, userData);
     clickCb(userData);
+  } else {
+    ESP_LOGI(TAG, "emitClick skipped (no callback) self=%p", this);
   }
 }
 
@@ -225,6 +249,7 @@ void RotaryEncoder::emitClick() {
 // then fires the activity callback.
 void RotaryEncoder::emitDoubleClick() {
   if (paused_) {
+    ESP_LOGI(TAG, "emitDoubleClick skipped (paused) self=%p", this);
     return;
   }
 
@@ -244,7 +269,10 @@ void RotaryEncoder::emitDoubleClick() {
     actCb(actData);
   }
   if (doubleClickCb != nullptr) {
+    ESP_LOGI(TAG, "emitDoubleClick dispatch self=%p user=%p", this, userData);
     doubleClickCb(userData);
+  } else {
+    ESP_LOGI(TAG, "emitDoubleClick skipped (no callback) self=%p", this);
   }
 }
 
@@ -252,6 +280,7 @@ void RotaryEncoder::emitDoubleClick() {
 // fires the activity callback.
 void RotaryEncoder::emitLongPress() {
   if (paused_) {
+    ESP_LOGI(TAG, "emitLongPress skipped (paused) self=%p", this);
     return;
   }
 
@@ -271,7 +300,10 @@ void RotaryEncoder::emitLongPress() {
     actCb(actData);
   }
   if (longPressCb != nullptr) {
+    ESP_LOGI(TAG, "emitLongPress dispatch self=%p user=%p", this, userData);
     longPressCb(userData);
+  } else {
+    ESP_LOGI(TAG, "emitLongPress skipped (no callback) self=%p", this);
   }
 }
 
@@ -389,7 +421,7 @@ bool RotaryEncoder::init(gpio_num_t gpioA, gpio_num_t gpioB, bool reverseDirecti
   }
 
   initialized_ = true;
-  ESP_LOGI(TAG, "Rotary encoder ISR decoder initialized on GPIO A=%d B=%d", static_cast<int>(gpioA),
+  ESP_LOGI(TAG, "Rotary encoder initialized self=%p GPIO A=%d B=%d", this, static_cast<int>(gpioA),
            static_cast<int>(gpioB));
   return true;
 }

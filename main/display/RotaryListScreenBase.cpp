@@ -16,6 +16,7 @@ void RotaryListScreenBase::applyFocusOutline(lv_obj_t *obj, bool focused) {
 
 void RotaryListScreenBase::rotaryAttach() {
   pendingRotateSteps_.store(0, std::memory_order_relaxed);
+  rotateProcessQueued_.store(false, std::memory_order_relaxed);
   utilities::RotaryEncoder::instance()->setCallbacks(
       &RotaryListScreenBase::rotary_rotate_trampoline, &RotaryListScreenBase::rotary_click_trampoline,
       &RotaryListScreenBase::rotary_long_press_trampoline, this, &RotaryListScreenBase::rotary_double_click_trampoline);
@@ -23,6 +24,7 @@ void RotaryListScreenBase::rotaryAttach() {
 
 void RotaryListScreenBase::rotaryDetach() {
   pendingRotateSteps_.store(0, std::memory_order_relaxed);
+  rotateProcessQueued_.store(false, std::memory_order_relaxed);
   utilities::RotaryEncoder::instance()->clearCallbacks(this);
 }
 
@@ -41,12 +43,23 @@ void RotaryListScreenBase::rotaryHandleLongPress() { rotaryNavigateBack(); }
 void RotaryListScreenBase::rotaryHandleDoubleClick() {}
 
 void RotaryListScreenBase::processPendingRotate() {
+  rotateProcessQueued_.store(false, std::memory_order_relaxed);
+
   if (!rotaryInputEnabled()) {
     pendingRotateSteps_.store(0, std::memory_order_relaxed);
     return;
   }
 
   int32_t steps = pendingRotateSteps_.exchange(0, std::memory_order_relaxed);
+  constexpr int32_t kMaxStepsPerDispatch = 16;
+  if (steps > kMaxStepsPerDispatch) {
+    pendingRotateSteps_.fetch_add(steps - kMaxStepsPerDispatch, std::memory_order_relaxed);
+    steps = kMaxStepsPerDispatch;
+  } else if (steps < -kMaxStepsPerDispatch) {
+    pendingRotateSteps_.fetch_add(steps + kMaxStepsPerDispatch, std::memory_order_relaxed);
+    steps = -kMaxStepsPerDispatch;
+  }
+
   while (steps > 0) {
     rotaryMoveFocus(1);
     --steps;
@@ -54,6 +67,12 @@ void RotaryListScreenBase::processPendingRotate() {
   while (steps < 0) {
     rotaryMoveFocus(-1);
     ++steps;
+  }
+
+  if (pendingRotateSteps_.load(std::memory_order_relaxed) != 0 && !rotateProcessQueued_.exchange(true)) {
+    if (lv_async_call(&RotaryListScreenBase::rotary_process_trampoline, this) != LV_RESULT_OK) {
+      rotateProcessQueued_.store(false, std::memory_order_relaxed);
+    }
   }
 }
 
@@ -64,7 +83,11 @@ void RotaryListScreenBase::rotary_rotate_trampoline(int32_t delta, void *userDat
   }
 
   self->pendingRotateSteps_.fetch_add(delta, std::memory_order_relaxed);
-  lv_async_call(&RotaryListScreenBase::rotary_process_trampoline, self);
+  if (!self->rotateProcessQueued_.exchange(true)) {
+    if (lv_async_call(&RotaryListScreenBase::rotary_process_trampoline, self) != LV_RESULT_OK) {
+      self->rotateProcessQueued_.store(false, std::memory_order_relaxed);
+    }
+  }
 }
 
 void RotaryListScreenBase::rotary_click_trampoline(void *userData) {

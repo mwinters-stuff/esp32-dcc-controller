@@ -85,13 +85,15 @@ public:
     expandedPanel_ = lv_obj_create(lvObj);
     makeFlatContainer_(expandedPanel_);
     lv_obj_set_width(expandedPanel_, lv_pct(100));
+    lv_obj_set_height(expandedPanel_, LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(expandedPanel_, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_top(expandedPanel_, 6, LV_PART_MAIN);
-    lv_obj_set_style_pad_row(expandedPanel_, 6, LV_PART_MAIN);
+    lv_obj_set_style_pad_top(expandedPanel_, 2, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(expandedPanel_, 2, LV_PART_MAIN);
 
     controlsRow1_ = lv_obj_create(expandedPanel_);
     makeFlatContainer_(controlsRow1_);
     lv_obj_set_width(controlsRow1_, lv_pct(100));
+    lv_obj_set_height(controlsRow1_, LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(controlsRow1_, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_style_pad_column(controlsRow1_, 6, LV_PART_MAIN);
 
@@ -118,6 +120,7 @@ public:
     controlsRow2_ = lv_obj_create(expandedPanel_);
     makeFlatContainer_(controlsRow2_);
     lv_obj_set_width(controlsRow2_, lv_pct(100));
+    lv_obj_set_height(controlsRow2_, LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(controlsRow2_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(controlsRow2_, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
@@ -139,9 +142,10 @@ public:
     functionsContainer_ = lv_obj_create(expandedPanel_);
     makeFlatContainer_(functionsContainer_);
     lv_obj_set_width(functionsContainer_, lv_pct(100));
+    lv_obj_set_height(functionsContainer_, LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(functionsContainer_, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_style_pad_column(functionsContainer_, 6, LV_PART_MAIN);
-    lv_obj_set_style_pad_row(functionsContainer_, 6, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(functionsContainer_, 2, LV_PART_MAIN);
 
     loco_ = loco;
     functionsBuilt_ = false;

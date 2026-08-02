@@ -7,14 +7,10 @@
  * rotary-encoder focus navigation.
  */
 #include "TurntableList.h"
-#include "DCCMenu.h"
-#include "FirstScreen.h"
 #include "LvglWrapper.h"
 #include "Screen.h"
-#include "WaitingScreen.h"
 #include "connection/wifi_control.h"
 #include "definitions.h"
-#include "utilities/WifiHandler.h"
 #include <cstdio>
 #include <memory>
 #include <vector>

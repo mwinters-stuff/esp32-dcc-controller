@@ -48,12 +48,12 @@ void WifiControl::init() {
   if (stateMutex_ == nullptr) {
     stateMutex_ = xSemaphoreCreateMutex();
   }
-  xTaskCreate(wifi_loop_task,   // Your task function
-              "wifi_loop_task", // Name
-              4096,             // Stack size
-              this,             // Parameter
-              tskIDLE_PRIORITY, // Priority
-              nullptr           // Task handle
+  xTaskCreate(wifi_loop_task,       // Your task function
+              "wifi_loop_task",     // Name
+              4096,                 // Stack size
+              this,                 // Parameter
+              tskIDLE_PRIORITY + 1, // Priority
+              nullptr               // Task handle
   );
 }
 
@@ -272,15 +272,23 @@ void WifiControl::loop() {
       const int pendingStop = pendingStopAddress_.exchange(-1, std::memory_order_relaxed);
       if (pendingStop > 0) {
         auto *sLoco = Loco::getByAddress(pendingStop);
+        if (sLoco == nullptr) {
+          // Keep stop commands working even if roster/local lists are mid-refresh.
+          sLoco = new Loco(pendingStop, LocoSource::LocoSourceEntry);
+        }
         if (sLoco) {
           dccExProtocol->setThrottle(sLoco, 0, sLoco->getDirection());
         }
       }
 
-      uint64_t now_ms = dccex_esp_idf_millis();
-      if (now_ms - lastGetListsMs >= 1000) {
-        dccExProtocol->getLists(true, true, true, true);
-        lastGetListsMs = now_ms;
+      const bool missingAnyList = !dccExProtocol->receivedRoster() || !dccExProtocol->receivedTurnoutList() ||
+                                  !dccExProtocol->receivedRouteList() || !dccExProtocol->receivedTurntableList();
+      if (missingAnyList) {
+        uint64_t now_ms = dccex_esp_idf_millis();
+        if (now_ms - lastGetListsMs >= 1000) {
+          dccExProtocol->getLists(true, true, true, true);
+          lastGetListsMs = now_ms;
+        }
       }
     }
 

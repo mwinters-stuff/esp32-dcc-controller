@@ -3,6 +3,9 @@
 #include "utilities/RotaryEncoder.h"
 #include <atomic>
 #include <cstdint>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+#include <freertos/task.h>
 #include <memory>
 
 #include "RosterListItem.h"
@@ -48,17 +51,21 @@ private:
   void requestStop(int address);
   void requestFunction(int address, int function, bool on);
   int activeAddressForThrottle() const;
+  void updateActiveThrottleAddress();
   void attachThrottleEncoder();
   void detachThrottleEncoder();
   void processPendingThrottleSteps();
   void handleThrottleEncoderClick();
   void handleThrottleEncoderLongPress();
+  bool enqueueThrottleEvent(int type, int32_t delta);
+  void throttleEventTask();
 
   static void throttle_rotate_trampoline(int32_t delta, void *userData);
   static void throttle_click_trampoline(void *userData);
   static void throttle_double_click_trampoline(void *userData);
   static void throttle_long_press_trampoline(void *userData);
   static void throttle_process_trampoline(void *userData);
+  static void throttle_event_task_trampoline(void *arg);
 
   lv_msg_sub_dsc_t *roster_received_sub = nullptr;
   lv_msg_sub_dsc_t *loco_changed_sub = nullptr;
@@ -69,7 +76,12 @@ private:
   lv_obj_t *btn_back = nullptr;
   utilities::RotaryEncoder throttleEncoder_;
   bool throttleEncoderAttached_ = false;
+  QueueHandle_t throttleEventQueue_ = nullptr;
+  TaskHandle_t throttleEventTask_ = nullptr;
+  std::atomic<bool> throttleEventTaskRunning_{false};
+  std::atomic<int> activeThrottleAddress_{-1};
   std::atomic<int32_t> pendingThrottleSteps_{0};
+  std::atomic<bool> throttleProcessQueued_{false};
   int64_t lastThrottleStepUs_ = 0;
   size_t locoPollCursor_ = 0;
 
