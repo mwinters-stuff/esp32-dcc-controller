@@ -60,6 +60,8 @@ public:
   void noConnectionSaved();
 
   bool isConnected();
+  void setAutoReconnectEnabled(bool enabled);
+  bool autoReconnectEnabled() const;
 
   std::string getIpAddress() const;
 
@@ -74,6 +76,7 @@ private:
   static std::vector<WithrottleDevice> withrottle_devices;
   bool connected = false;
   bool manualConnectInProgress = false;
+  bool autoReconnectEnabled_ = true;
 
   void logMDNSResult(WithrottleDevice &r);
 

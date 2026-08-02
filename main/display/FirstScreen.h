@@ -1,7 +1,9 @@
 #pragma once
-#include "RotaryListScreenBase.h"
+
 #include "ui/lv_msg.h"
 #include <memory>
+
+#include "RotaryListScreenBase.h"
 
 namespace display {
 
@@ -28,6 +30,7 @@ public:
   void button_connect_callback(lv_event_t *e);
   void button_wifi_list_callback(lv_event_t *e);
   void button_calibrate_callback(lv_event_t *e);
+  void button_settings_callback(lv_event_t *e);
 
   void wifi_connected_callback(lv_msg_t *msg);
   void wifi_not_saved_callback(lv_msg_t *msg);
@@ -52,6 +55,12 @@ protected:
     auto *self = static_cast<FirstScreen *>(lv_event_get_user_data(e));
     if (self)
       self->button_calibrate_callback(e);
+  }
+
+  static void event_settings_trampoline(lv_event_t *e) {
+    auto *self = static_cast<FirstScreen *>(lv_event_get_user_data(e));
+    if (self)
+      self->button_settings_callback(e);
   }
 
   static void wifi_connected_trampoline(lv_msg_t *msg) {
@@ -83,6 +92,7 @@ private:
   lv_obj_t *btn_connect = nullptr;
   lv_obj_t *btn_wifi_scan = nullptr;
   lv_obj_t *btn_cal = nullptr;
+  lv_obj_t *btn_settings = nullptr;
   lv_obj_t *lbl_status = nullptr;
   lv_obj_t *lbl_ip = nullptr;
 };

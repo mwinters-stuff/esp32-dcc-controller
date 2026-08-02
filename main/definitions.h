@@ -1,6 +1,5 @@
 #pragma once
 
-#include "ui/lv_msg.h"
 #include <cstdint>
 
 #define MSG_WIFI_CONNECTED 1
@@ -26,6 +25,7 @@
 #define MSG_DCC_TURNTABLE_CHANGED 26
 #define MSG_DCC_LOCO_CHANGED 27
 #define MSG_TAKE_SCREENSHOT 28
+#define MSG_POWER_SETTINGS_UPDATED 29
 
 #define NVS_NAMESPACE "touch_cal"
 #define NVS_CALIBRATION_SAVED "cal_saved"
@@ -41,6 +41,10 @@
 #define NVS_DCC_HOSTNAME "hostname"
 #define NVS_DCC_IP "ip"
 #define NVS_DCC_PORT "port"
+
+#define NVS_NAMESPACE_SETTINGS "settings"
+#define NVS_DISPLAY_OFF_MINUTES "disp_off_min"
+#define NVS_SLEEP_DISCONNECT_MINUTES "sleep_disc_min"
 
 #define DEFAULT_SCAN_LIST_SIZE 20
 
