@@ -140,6 +140,7 @@ void maybe_start_dcc_reconnect() {
   // success handler calls parent->showScreen() it already has the right address.
   auto dccMenu = display::DCCMenu::instance();
   dccMenu->setConnectedServer(ip, static_cast<int>(port), ip);
+  dccMenu->cleanUp();
 
   // Show a reconnecting indicator. DCCMenu is passed as the parent so that on
   // success WaitingScreen navigates directly into it.

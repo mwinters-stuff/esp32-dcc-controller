@@ -46,7 +46,7 @@ void DCCMenu::ensureStatusHideTimer() {
   statusHideTimer = lv_timer_create(
       [](lv_timer_t *timer) {
         auto *self = static_cast<DCCMenu *>(lv_timer_get_user_data(timer));
-        if (!self || self->isCleanedUp || !self->lbl_status) {
+        if (!self || self->isCleanedUp || !self->lbl_status || !lv_obj_is_valid(self->lbl_status)) {
           return;
         }
         lv_obj_add_flag(self->lbl_status, LV_OBJ_FLAG_HIDDEN);
@@ -57,7 +57,7 @@ void DCCMenu::ensureStatusHideTimer() {
 // Updates the status text, makes it visible and hides it again after 20s if
 // the text is not updated.
 void DCCMenu::setStatusText(const char *text) {
-  if (!lbl_status || text == nullptr) {
+  if (!lbl_status || !lv_obj_is_valid(lbl_status) || text == nullptr) {
     return;
   }
 
