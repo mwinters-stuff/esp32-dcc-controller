@@ -26,15 +26,37 @@ void WaitingScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   isCleanedUp = false;
   lv_obj_clean(lv_screen_active());
   lvObj_ = lv_screen_active();
-  spinner = makeSpinner(lvObj_, 0, 0, 40, 1000);
-  label = makeLabel(lvObj_, message.c_str(), LV_ALIGN_TOP_MID, 0, 100, "label.title");
-  sub_label = makeLabel(lvObj_, subMessage.c_str(), LV_ALIGN_TOP_MID, 0, 140, "label.main");
-  lv_obj_set_width(label, lv_pct(90));
+
+  // Spinner sits in the upper half of the screen.
+  spinner = makeSpinner(lvObj_, 0, -60, 40, 1000);
+
+  // A flex-column container stacks the two labels vertically so the sub-label
+  // always sits below the title even when the title wraps to multiple lines.
+  lv_obj_t *label_container = lv_obj_create(lvObj_);
+  lv_obj_set_style_bg_opa(label_container, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(label_container, 0, 0);
+  lv_obj_set_style_outline_width(label_container, 0, 0);
+  lv_obj_set_style_pad_all(label_container, 0, 0);
+  lv_obj_set_style_pad_gap(label_container, 10, 0);
+  lv_obj_clear_flag(label_container, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_flex_flow(label_container, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(label_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_size(label_container, lv_pct(90), LV_SIZE_CONTENT);
+  lv_obj_align(label_container, LV_ALIGN_CENTER, 0, 40);
+
+  label = lv_label_create(label_container);
+  lv_label_set_text(label, message.c_str());
   lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(label, lv_pct(100));
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_width(sub_label, lv_pct(90));
+  setStyle(label, "label.title");
+
+  sub_label = lv_label_create(label_container);
+  lv_label_set_text(sub_label, subMessage.c_str());
   lv_label_set_long_mode(sub_label, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(sub_label, lv_pct(100));
   lv_obj_set_style_text_align(sub_label, LV_TEXT_ALIGN_CENTER, 0);
+  setStyle(sub_label, "label.main");
 
   msg_subscribe_success = lv_msg_subscribe(
       MSG_DCC_CONNECTION_SUCCESS,
