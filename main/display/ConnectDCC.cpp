@@ -11,7 +11,6 @@
 #include "FirstScreen.h"
 #include "LvglWrapper.h"
 #include "MessageBox.h"
-#include "Screen.h"
 #include "WaitingScreen.h"
 #include "connection/wifi_control.h"
 #include "definitions.h"

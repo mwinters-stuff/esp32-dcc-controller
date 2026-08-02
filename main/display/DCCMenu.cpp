@@ -9,7 +9,6 @@
  * server and returns to the home screen.
  */
 #include "DCCMenu.h"
-#include "ConnectDCC.h"
 #include "FirstScreen.h"
 #include "LvglWrapper.h"
 #include "RosterList.h"

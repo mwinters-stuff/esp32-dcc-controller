@@ -9,15 +9,12 @@
  */
 #include "WifiHandler.h"
 #include "definitions.h"
-#include "display/MessageBox.h"
 #include "ui/lv_msg.h"
 #include "utilities/ScreenshotHttp.h"
 #include <esp_event.h>
 #include <esp_log.h>
 #include <esp_netif.h>
-#include <esp_task_wdt.h>
 #include <freertos/event_groups.h>
-#include <lvgl.h>
 #include <lwip/inet.h>
 #include <map>
 #include <mdns.h>
@@ -97,6 +94,17 @@ void WifiHandler::wifi_event_handler(void *arg, esp_event_base_t event_base, int
             delete payload; // Clean up heap-allocated payload after use
           },
           self);
+    } else if (self->autoReconnectEnabled_) {
+      const esp_err_t reconnectErr = esp_wifi_connect();
+      if (reconnectErr == ESP_OK) {
+        ESP_LOGI(TAG, "Requested WiFi reconnect after disconnect");
+      } else if (reconnectErr == ESP_ERR_WIFI_CONN || reconnectErr == ESP_ERR_WIFI_STATE) {
+        ESP_LOGI(TAG, "WiFi reconnect already in progress");
+      } else {
+        ESP_LOGE(TAG, "Failed to request WiFi reconnect: %s", esp_err_to_name(reconnectErr));
+      }
+    } else {
+      ESP_LOGI(TAG, "Auto reconnect disabled; leaving WiFi disconnected");
     }
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     ESP_LOGI(TAG, "WifiEventHandler: IP_EVENT_STA_GOT_IP");
@@ -321,6 +329,16 @@ void WifiHandler::create_wifi_connect_task(const char *ssid, const char *passwor
 
 // Returns true if an IP address has been assigned to the STA interface.
 bool WifiHandler::isConnected() { return connected; }
+
+void WifiHandler::setAutoReconnectEnabled(bool enabled) {
+  if (autoReconnectEnabled_ == enabled) {
+    return;
+  }
+  autoReconnectEnabled_ = enabled;
+  ESP_LOGI(TAG, "WiFi auto reconnect %s", enabled ? "enabled" : "disabled");
+}
+
+bool WifiHandler::autoReconnectEnabled() const { return autoReconnectEnabled_; }
 
 // Returns the current IPv4 address as a dotted-decimal string, or an empty
 // string if not connected.

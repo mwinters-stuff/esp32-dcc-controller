@@ -8,7 +8,6 @@
  */
 #include "TurntableList.h"
 #include "LvglWrapper.h"
-#include "Screen.h"
 #include "connection/wifi_control.h"
 #include "definitions.h"
 #include <cstdio>
