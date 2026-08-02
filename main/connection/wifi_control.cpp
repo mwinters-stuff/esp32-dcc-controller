@@ -236,6 +236,8 @@ void WifiControl::connectToServer(const char *server_ip, uint16_t port) {
     dccExProtocol = newProtocol;
     lastGetListsMs = dccex_esp_idf_millis();
     currentConnectionState = CONNECTED;
+    activeServerIp_ = server_ip;
+    activeServerPort_ = port;
     xSemaphoreGive(stateMutex_);
   }
 
@@ -318,6 +320,13 @@ void WifiControl::startConnectToServer(const char *server_ip, uint16_t port) {
   }
   auto *args = new ConnectTaskArgs{this, server_ip, port};
   xTaskCreate(&WifiControl::connect_task, "connect_task", 4096, args, tskIDLE_PRIORITY, nullptr);
+}
+
+// Clears the remembered active endpoint so a stale address is never reused.
+void WifiControl::clearActiveEndpoint() {
+  activeServerIp_.clear();
+  activeServerPort_ = 0;
+  ESP_LOGI(TAG, "Active DCC endpoint cleared");
 }
 
 // Closes the TCP socket, destroys the protocol/stream objects and publishes

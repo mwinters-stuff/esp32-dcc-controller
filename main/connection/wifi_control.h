@@ -69,6 +69,11 @@ public:
 
   std::shared_ptr<DCCEXProtocol> dccProtocol() { return dccExProtocol; };
 
+  std::string activeServerIp() const { return activeServerIp_; }
+  uint16_t activeServerPort() const { return activeServerPort_; }
+  bool hasActiveEndpoint() const { return !activeServerIp_.empty() && activeServerPort_ != 0; }
+  void clearActiveEndpoint();
+
 private:
   static err_t tcp_connected_callback(void *arg, struct tcp_pcb *tpcb, err_t err);
   static void tcp_connect_err_callback(void *arg, err_t err);
@@ -84,6 +89,9 @@ private:
   std::atomic<int> pendingThrottleDirection_{0};
   std::atomic<bool> pendingThrottleValid_{false};
   std::atomic<int> pendingStopAddress_{-1};
+
+  std::string activeServerIp_;
+  uint16_t activeServerPort_ = 0;
 
   struct ConnectTaskArgs {
     WifiControl *self;

@@ -508,6 +508,7 @@ void DCCMenu::button_back_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI(TAG, "Close button clicked!");
     auto wifiControl = utilities::WifiControl::instance();
+    wifiControl->clearActiveEndpoint();
     wifiControl->disconnect();
 
     cleanUp();
