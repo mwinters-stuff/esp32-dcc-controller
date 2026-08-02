@@ -1,10 +1,12 @@
 #include "LGFX_ILI9488_S3.hpp"
 #include "connection/wifi_control.h"
 #include "definitions.h"
+#include "display/DCCMenu.h"
 #include "display/DisplayManager.h"
 #include "display/FirstScreen.h"
 #include "display/ManualCalibration.h"
 #include "display/MessageBox.h"
+#include "display/WaitingScreen.h"
 #include "display/WifiConnectScreen.h"
 #include "ui/LvglTheme.h"
 #include "utilities/PowerSettings.h"
@@ -13,7 +15,6 @@
 #include "utilities/WifiHandler.h"
 #include <LovyanGFX.hpp>
 #include <atomic>
-#include <chrono>
 #include <esp_event.h>
 #include <esp_log.h>
 #include <esp_netif.h>
@@ -49,6 +50,9 @@ static std::atomic_bool reconnectWifiAfterWake{false};
 static std::atomic_bool networkSleepDisconnectApplied{false};
 static std::atomic_uint32_t displayOffTimeoutMs{utilities::kDefaultDisplayOffMinutes * 60000UL};
 static std::atomic_uint32_t sleepDisconnectTimeoutMs{utilities::kDefaultSleepDisconnectMinutes * 60000UL};
+
+// Owns the WaitingScreen shown during a post-wake DCC reconnect attempt.
+static std::shared_ptr<display::WaitingScreen> reconnectWaitScreen_;
 
 constexpr uint32_t ACTIVE_LOOP_DELAY_MS = 10;
 constexpr uint32_t SLEEP_LOOP_DELAY_MS = 100;
@@ -132,9 +136,50 @@ void maybe_start_dcc_reconnect() {
     ESP_LOGI(TAG, "Reconnecting to NVS-saved DCC endpoint %s:%u", ip.c_str(), static_cast<unsigned>(port));
   }
 
+  // Pre-configure DCCMenu with the target server so that when WaitingScreen's
+  // success handler calls parent->showScreen() it already has the right address.
+  auto dccMenu = display::DCCMenu::instance();
+  dccMenu->setConnectedServer(ip, static_cast<int>(port), ip);
+
+  // Show a reconnecting indicator. DCCMenu is passed as the parent so that on
+  // success WaitingScreen navigates directly into it.
+  reconnectWaitScreen_ = std::make_shared<display::WaitingScreen>();
+  reconnectWaitScreen_->setLabel("Reconnecting to DCC...");
+  reconnectWaitScreen_->setSubLabel(ip);
+  reconnectWaitScreen_->showScreen(dccMenu);
+
   ESP_LOGI(TAG, "Attempting DCC reconnect to %s:%u after wake", ip.c_str(), static_cast<unsigned>(port));
   reconnectDccInProgress.store(true);
   wifiControl->startConnectToServer(ip.c_str(), port);
+
+  // Spawn a lightweight task that polls for the connection result and sends the
+  // appropriate message so WaitingScreen can handle success/failure UI.
+  struct PollArgs {
+    utilities::WifiControl *wifiControl;
+    std::string ip;
+    uint16_t port;
+  };
+  auto *pollArgs = new PollArgs{wifiControl.get(), ip, port};
+  xTaskCreate(
+      [](void *arg) {
+        auto *args = static_cast<PollArgs *>(arg);
+        utilities::WifiControl::connection_state state;
+        do {
+          vTaskDelay(pdMS_TO_TICKS(50));
+          state = args->wifiControl->connectionState();
+        } while (state == utilities::WifiControl::CONNECTING);
+
+        if (state == utilities::WifiControl::CONNECTED) {
+          ESP_LOGI("main", "DCC reconnect to %s:%u succeeded", args->ip.c_str(), static_cast<unsigned>(args->port));
+          lv_async_call([](void *) { lv_msg_send(MSG_DCC_CONNECTION_SUCCESS, NULL); }, nullptr);
+        } else {
+          ESP_LOGW("main", "DCC reconnect to %s:%u failed", args->ip.c_str(), static_cast<unsigned>(args->port));
+          lv_async_call([](void *) { lv_msg_send(MSG_DCC_CONNECTION_FAILED, NULL); }, nullptr);
+        }
+        delete args;
+        vTaskDelete(nullptr);
+      },
+      "reconnect_poll", 4096, pollArgs, tskIDLE_PRIORITY, nullptr);
 }
 
 // --- FADE EFFECT ---
@@ -413,6 +458,9 @@ void setup() {
       [](lv_msg_t *) {
         reconnectDccAfterWake.store(false);
         reconnectDccInProgress.store(false);
+        // WaitingScreen owns navigation to DCCMenu on success; release our ref
+        // after LVGL has processed the current event dispatch round.
+        lv_async_call([](void *) { reconnectWaitScreen_.reset(); }, nullptr);
       },
       nullptr);
 
@@ -421,7 +469,9 @@ void setup() {
       [](lv_msg_t *) {
         if (reconnectDccInProgress.exchange(false)) {
           reconnectDccAfterWake.store(false);
-          pendingDccDisconnectPopup.store(true);
+          // WaitingScreen handles the failure UI (error box → FirstScreen);
+          // release our ref after LVGL has processed the event dispatch round.
+          lv_async_call([](void *) { reconnectWaitScreen_.reset(); }, nullptr);
         }
       },
       nullptr);
