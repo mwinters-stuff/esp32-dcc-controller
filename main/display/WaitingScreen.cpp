@@ -29,6 +29,12 @@ void WaitingScreen::show(lv_obj_t *parent, std::weak_ptr<Screen> parentScreen) {
   spinner = makeSpinner(lvObj_, 0, 0, 40, 1000);
   label = makeLabel(lvObj_, message.c_str(), LV_ALIGN_TOP_MID, 0, 100, "label.title");
   sub_label = makeLabel(lvObj_, subMessage.c_str(), LV_ALIGN_TOP_MID, 0, 140, "label.main");
+  lv_obj_set_width(label, lv_pct(90));
+  lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_width(sub_label, lv_pct(90));
+  lv_label_set_long_mode(sub_label, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(sub_label, LV_TEXT_ALIGN_CENTER, 0);
 
   msg_subscribe_success = lv_msg_subscribe(
       MSG_DCC_CONNECTION_SUCCESS,
