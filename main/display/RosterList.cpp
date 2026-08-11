@@ -127,9 +127,6 @@ void RosterListScreen::refreshList() {
   auto loco = Loco::getFirst();
   while (loco != nullptr) {
     if (loco->getSource() == LocoSource::LocoSourceRoster) {
-      const char *name = loco->getName();
-      ESP_LOGI(TAG, "Roster ID=%d, Name=%s", loco->getAddress(), (name != nullptr) ? name : "");
-
       auto listItem = std::make_shared<RosterListItem>(
           list_roster, listItems.size(), loco,
           [this](int address) {
@@ -147,8 +144,6 @@ void RosterListScreen::refreshList() {
       listItems.push_back(listItem);
       // One-shot sync: request current server state for each roster item.
       wifiControl->requestLocoUpdate(loco->getAddress());
-    } else {
-      ESP_LOGI(TAG, "Skipping non-roster loco with ID=%d", loco->getAddress());
     }
     loco = loco->getNext();
   }
@@ -212,7 +207,6 @@ void RosterListScreen::button_back_callback(lv_event_t *e) {
 }
 
 void RosterListScreen::selectAddress(int address) {
-  const int previousExpandedAddress = expandedAddress;
   if (expandedAddress == address) {
     expandedAddress = -1;
   } else {
@@ -226,9 +220,6 @@ void RosterListScreen::selectAddress(int address) {
     }
   }
 
-  ESP_LOGI(TAG, "selectAddress addr=%d prevExpanded=%d newExpanded=%d focusedIndex=%d itemCount=%u", address,
-           previousExpandedAddress, expandedAddress, focusedIndex, static_cast<unsigned>(listItems.size()));
-
   updateExpandedState();
   updateFocusedState();
   updateActiveThrottleAddress();
@@ -237,8 +228,6 @@ void RosterListScreen::selectAddress(int address) {
 void RosterListScreen::updateExpandedState() {
   for (const auto &item : listItems) {
     const bool expanded = expandedAddress >= 0 && item->getAddress() == expandedAddress;
-    ESP_LOGI(TAG, "updateExpandedState item=%d expanded=%d targetExpanded=%d", item->getAddress(), expanded ? 1 : 0,
-             expandedAddress);
     item->setExpanded(expanded);
     if (expanded) {
       lv_obj_scroll_to_view(item->getLvObj(), LV_ANIM_OFF);

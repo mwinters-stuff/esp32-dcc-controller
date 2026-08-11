@@ -5,7 +5,7 @@ firmware image (no OS/host build); there is no unit test suite for `main/` — v
 
 ## Build
 
-Requires ESP-IDF v5.5.x sourced into the shell (`source /home/mathew/.esp/v5.5.x/esp-idf/export.sh` or the
+Requires ESP-IDF v5.5.4 sourced into the shell (`source /home/mathew/.esp/v5.5.4/esp-idf/export.sh` or the
 `~/.espressif` path in `.vscode/settings.json`).
 
 ```bash

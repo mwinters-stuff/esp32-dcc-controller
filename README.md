@@ -150,7 +150,7 @@ This project uses ESP-IDF and targets `esp32s3`.
 
 ### Prerequisites
 
-- ESP-IDF v5.5.x installed.
+- ESP-IDF v5.5.4 or better installed.
 - USB connected ESP32-S3 board.
 - Serial permissions (Linux user in `dialout` group, if required).
 
@@ -160,7 +160,7 @@ From project root:
 
 ```bash
 cd /home/mathew/src/esp32-dcc-controller
-source /home/mathew/.esp/v5.5.x/esp-idf/export.sh
+source /home/mathew/.esp/v5.5.4/esp-idf/export.sh
 idf.py set-target esp32s3
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor

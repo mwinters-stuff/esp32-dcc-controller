@@ -466,7 +466,7 @@ void ConnectDCCScreen::button_save_callback(lv_event_t *e) {
       if (currentItem) {
         if (selectedItemIsSaved()) {
           ESP_LOGI(TAG, "Delete button pressed on saved item %s", currentItem->getText().c_str());
-          display::showMessageBox(
+          display::showConfirmMessageBox(
               "Remove Saved", ("Remove saved DCC connection?\n" + currentItem->getText()).c_str(),
               display::MessageBoxState::Warning,
               [](void *ctx) {
@@ -769,7 +769,7 @@ void ConnectDCCScreen::rotaryHandleDoubleClick() {
     return;
   }
 
-  display::showMessageBox(
+  display::showConfirmMessageBox(
       "Remove Saved",
       ("Remove saved DCC connection?\n" + dev.instance + " (" + dev.ip + ":" + std::to_string(dev.port) + ")").c_str(),
       display::MessageBoxState::Warning,

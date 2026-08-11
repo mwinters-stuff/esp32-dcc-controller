@@ -7,7 +7,7 @@
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32s3"
   },
-  "idf.flashType": "UART",
+  "idf.flashType": "JTAG",
   "files.autoSave": "afterDelay",
   "idf.notificationMode": "Silent",
   "editor.tabSize": 2,

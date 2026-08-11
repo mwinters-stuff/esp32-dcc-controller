@@ -41,16 +41,15 @@ namespace utilities {
 
 static const char *TAG = "RotaryEncoder";
 
-// iot_button press-down raw callback; logs the event for diagnostics.
-static void sw_press_down_cb(void *button_handle, void *usr_data) { ESP_LOGI(TAG, "SW_PRESS_DOWN"); }
+// iot_button press-down raw callback; retained for optional diagnostics.
+static void sw_press_down_cb(void *button_handle, void *usr_data) {}
 
-// iot_button press-up raw callback; logs the event for diagnostics.
-static void sw_press_up_cb(void *button_handle, void *usr_data) { ESP_LOGI(TAG, "SW_PRESS_UP"); }
+// iot_button press-up raw callback; retained for optional diagnostics.
+static void sw_press_up_cb(void *button_handle, void *usr_data) {}
 
 // iot_button single-click trampoline: casts usr_data to RotaryEncoder and
 // calls emitClick().
 void RotaryEncoder::sw_single_click_trampoline(void *button_handle, void *usr_data) {
-  ESP_LOGI(TAG, "SW_SINGLE_CLICK");
   auto *self = static_cast<RotaryEncoder *>(usr_data);
   if (self) {
     self->emitClick();
@@ -60,7 +59,6 @@ void RotaryEncoder::sw_single_click_trampoline(void *button_handle, void *usr_da
 // iot_button double-click trampoline: casts usr_data to RotaryEncoder and
 // calls emitDoubleClick().
 void RotaryEncoder::sw_double_click_trampoline(void *button_handle, void *usr_data) {
-  ESP_LOGI(TAG, "SW_DOUBLE_CLICK");
   auto *self = static_cast<RotaryEncoder *>(usr_data);
   if (self) {
     self->emitDoubleClick();
@@ -70,7 +68,6 @@ void RotaryEncoder::sw_double_click_trampoline(void *button_handle, void *usr_da
 // iot_button long-press trampoline: casts usr_data to RotaryEncoder and calls
 // emitLongPress().
 void RotaryEncoder::sw_long_press_trampoline(void *button_handle, void *usr_data) {
-  ESP_LOGI(TAG, "SW_LONG_PRESS_START");
   auto *self = static_cast<RotaryEncoder *>(usr_data);
   if (self) {
     self->emitLongPress();
@@ -130,8 +127,6 @@ void RotaryEncoder::monitor_task_trampoline(void *arg) {
       }
 
       if (detentSteps != 0) {
-        ESP_LOGI(TAG, "%s detents=%ld count=%ld", detentSteps > 0 ? "ROTARY_UP" : "ROTARY_DOWN",
-                 static_cast<long>(detentSteps > 0 ? detentSteps : -detentSteps), static_cast<long>(currentCount));
         self->emitRotate(detentSteps);
       }
     }
@@ -187,7 +182,6 @@ void RotaryEncoder::setActivityCallback(ActivityCallback cb, void *userData) {
 // callbacks, then fires the activity callback.
 void RotaryEncoder::emitRotate(int32_t delta) {
   if (paused_) {
-    ESP_LOGI(TAG, "emitRotate skipped (paused) self=%p delta=%ld", this, static_cast<long>(delta));
     return;
   }
 
@@ -207,10 +201,7 @@ void RotaryEncoder::emitRotate(int32_t delta) {
     actCb(actData);
   }
   if (rotateCb != nullptr) {
-    ESP_LOGI(TAG, "emitRotate dispatch self=%p delta=%ld user=%p", this, static_cast<long>(delta), userData);
     rotateCb(delta, userData);
-  } else {
-    ESP_LOGI(TAG, "emitRotate skipped (no callback) self=%p delta=%ld", this, static_cast<long>(delta));
   }
 }
 
@@ -218,7 +209,6 @@ void RotaryEncoder::emitRotate(int32_t delta) {
 // activity callback.
 void RotaryEncoder::emitClick() {
   if (paused_) {
-    ESP_LOGI(TAG, "emitClick skipped (paused) self=%p", this);
     return;
   }
 
@@ -238,10 +228,7 @@ void RotaryEncoder::emitClick() {
     actCb(actData);
   }
   if (clickCb != nullptr) {
-    ESP_LOGI(TAG, "emitClick dispatch self=%p user=%p", this, userData);
     clickCb(userData);
-  } else {
-    ESP_LOGI(TAG, "emitClick skipped (no callback) self=%p", this);
   }
 }
 
@@ -249,7 +236,6 @@ void RotaryEncoder::emitClick() {
 // then fires the activity callback.
 void RotaryEncoder::emitDoubleClick() {
   if (paused_) {
-    ESP_LOGI(TAG, "emitDoubleClick skipped (paused) self=%p", this);
     return;
   }
 
@@ -269,10 +255,7 @@ void RotaryEncoder::emitDoubleClick() {
     actCb(actData);
   }
   if (doubleClickCb != nullptr) {
-    ESP_LOGI(TAG, "emitDoubleClick dispatch self=%p user=%p", this, userData);
     doubleClickCb(userData);
-  } else {
-    ESP_LOGI(TAG, "emitDoubleClick skipped (no callback) self=%p", this);
   }
 }
 
@@ -280,7 +263,6 @@ void RotaryEncoder::emitDoubleClick() {
 // fires the activity callback.
 void RotaryEncoder::emitLongPress() {
   if (paused_) {
-    ESP_LOGI(TAG, "emitLongPress skipped (paused) self=%p", this);
     return;
   }
 
@@ -300,10 +282,7 @@ void RotaryEncoder::emitLongPress() {
     actCb(actData);
   }
   if (longPressCb != nullptr) {
-    ESP_LOGI(TAG, "emitLongPress dispatch self=%p user=%p", this, userData);
     longPressCb(userData);
-  } else {
-    ESP_LOGI(TAG, "emitLongPress skipped (no callback) self=%p", this);
   }
 }
 
@@ -339,7 +318,7 @@ bool RotaryEncoder::init(gpio_num_t gpioA, gpio_num_t gpioB, bool reverseDirecti
     return false;
   }
 
-  const esp_err_t isrServiceErr = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
+  const esp_err_t isrServiceErr = gpio_install_isr_service(0);
   if (isrServiceErr == ESP_OK) {
     ESP_LOGI(TAG, "GPIO ISR service installed");
   } else if (isrServiceErr == ESP_ERR_INVALID_STATE) {

@@ -1,7 +1,7 @@
 #ifndef _WIFI_CONNECTION_H
 #define _WIFI_CONNECTION_H
 
-#include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/queue.h"
 #include <DCCStream.h>
 #include <cstring>
@@ -34,7 +34,7 @@ private:
   static void enqueue_fail_err(err_t fail_err) {
     // Never block from lwIP callback context.
     if (tcp_fail_queue) {
-      xQueueSendToBack(tcp_fail_queue, &fail_err, 0);
+      xQueueSendToBack(tcp_fail_queue, &fail_err, static_cast<TickType_t>(0));
     }
   }
 
@@ -93,6 +93,8 @@ private:
   }
 
 public:
+  using Print::write;
+
   explicit TCPSocketStream(struct tcp_pcb *pcb) : pcb(pcb), recv_buffer(nullptr) {
     // Create a queue (example)
 
@@ -109,10 +111,10 @@ public:
   }
 
   // Check if data is available to read
-  int available() { return recv_buffer ? recv_buffer->tot_len : 0; }
+  int available() override { return recv_buffer ? recv_buffer->tot_len : 0; }
 
   // Read a single byte from the socket
-  int read() {
+  int read() override {
     LOCK_TCPIP_CORE();
     if (recv_buffer == nullptr) {
       UNLOCK_TCPIP_CORE();
@@ -130,7 +132,7 @@ public:
   }
 
   // Write a buffer to the socket
-  size_t write(const uint8_t *buffer, size_t size) {
+  size_t write(const uint8_t *buffer, size_t size) override {
     if (failed) {
       return -1; // Already failed
     }
@@ -165,8 +167,10 @@ public:
     return err; // Error
   }
 
+  size_t write(uint8_t byte) override { return write(&byte, 1); }
+
   // No-op for sockets (no explicit flushing needed)
-  void flush() {}
+  void flush() override {}
 
   // Send a string with a newline
   void println(const char *format, ...) {
@@ -254,21 +258,25 @@ public:
 class LoggingStream : public Stream {
 
 public:
+  using Print::write;
+
   explicit LoggingStream(struct tcp_pcb *pcb) {}
 
   // Check if data is available to read
-  int available() { return 0; }
+  int available() override { return 0; }
 
   // Read a single byte from the socket
-  int read() { return 0; }
+  int read() override { return 0; }
 
   // Write a buffer to the socket
-  size_t write(const uint8_t *buffer, size_t size) {
+  size_t write(const uint8_t *buffer, size_t size) override {
     return 0; // Error
   }
 
+  size_t write(uint8_t byte) override { return write(&byte, 1); }
+
   // No-op for sockets (no explicit flushing needed)
-  void flush() {}
+  void flush() override {}
 
   // Send a string with a newline
   void println(const char *format, ...) {
@@ -285,7 +293,7 @@ public:
     // End the variable argument list
     va_end(args);
 
-    printf(buffer);
+    printf("%s", buffer);
     printf("\n");
   }
 
@@ -304,7 +312,7 @@ public:
     // End the variable argument list
     va_end(args);
 
-    printf(buffer);
+    printf("%s", buffer);
   }
 
   // Destructor to close the socket

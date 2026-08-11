@@ -140,7 +140,6 @@ void DCCEXProtocolDelegateImpl::receivedLocoUpdate(Loco *loco) {
     return;
   }
 
-  printf("Loco Update: Address=%d\n", loco->getAddress());
   LocoStatePayload payload = {
       .address = loco->getAddress(),
       .speed = loco->getSpeed(),
@@ -152,10 +151,7 @@ void DCCEXProtocolDelegateImpl::receivedLocoUpdate(Loco *loco) {
 
 // Called on a broadcast speed/direction update for a loco address and forwards
 // it to roster screens as MSG_DCC_LOCO_CHANGED.
-void DCCEXProtocolDelegateImpl::receivedLocoBroadcast(int address, int speed, Direction direction,
-                                                      int functionMap) {
-  printf("Loco Broadcast: Address=%d, Speed=%d, Direction=%d, FunctionMap=%d\n", address, speed, direction,
-         functionMap);
+void DCCEXProtocolDelegateImpl::receivedLocoBroadcast(int address, int speed, Direction direction, int functionMap) {
   Loco *loco = Loco::getByAddress(address);
   if (loco) {
     loco->setSpeed(speed);

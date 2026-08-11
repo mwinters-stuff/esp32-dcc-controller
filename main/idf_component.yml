@@ -21,7 +21,7 @@ dependencies:
   LovyanGFX:
     git: https://github.com/lovyan03/LovyanGFX.git
     # Optional: Specify a tag or commit
-    version: "1.2.21"
+    version: "1.2.26"
     # version: develop
     # version: "commit_hash"
   DCCEXProtocol:
