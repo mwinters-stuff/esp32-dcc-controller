@@ -16,8 +16,16 @@ namespace display {
 using namespace ui;
 
 namespace {
-// LVGL async callback: returns to FirstScreen after an error is dismissed.
-void return_to_main_screen(void *) { display::FirstScreen::instance()->showScreen(); }
+// Deferred navigation: called from the messagebox OK button's event handler.
+// Must be async so lv_obj_clean() runs after LVGL finishes the click dispatch,
+// otherwise it deletes the active event target and corrupts the new screen's heap.
+void return_to_main_screen(void *) {
+  lv_async_call(
+      [](void *) {
+        display::FirstScreen::instance()->showScreen();
+      },
+      nullptr);
+}
 } // namespace
 
 // Builds the waiting screen UI (spinner + labels) and subscribes to the

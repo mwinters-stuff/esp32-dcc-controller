@@ -377,6 +377,21 @@ void ConnectDCCScreen::connectToDCCDevice(const utilities::WithrottleDevice &dcc
   // Stop receiving mDNS list updates while the waiting screen is active.
   resetMsgHandlers();
 
+  // Detach rotary input and mark cleaned-up so any already-queued
+  // lv_async_call rotary callbacks bail at rotaryInputEnabled() rather than
+  // touching the LVGL objects that WaitingScreen is about to free.
+  rotaryDetach();
+  isCleanedUp = true;
+  btn_connect = nullptr;
+  btn_back = nullptr;
+  btn_save = nullptr;
+  list_auto = nullptr;
+  lbl_title = nullptr;
+  spinner = nullptr;
+  currentButton = nullptr;
+  savedListItem = nullptr;
+  focusedIndex = -1;
+
   waitingScreen_ = std::make_shared<WaitingScreen>();
   waitingScreen_->setLabel("Connecting to:");
   waitingScreen_->setSubLabel(dccDevice.hostname.empty() ? dccDevice.ip : dccDevice.hostname);
